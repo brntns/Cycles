@@ -50,7 +50,7 @@ type CreateInput struct {
 
 func (s *Store) Create(ctx context.Context, in CreateInput) (*model.Cycle, error) {
 	if in.TargetWeeks == 0 {
-		in.TargetWeeks = 8
+		in.TargetWeeks = 1
 	}
 	if in.TargetWeeks < 1 || in.TargetWeeks > 16 {
 		return nil, fmt.Errorf("target_weeks must be between 1 and 16")

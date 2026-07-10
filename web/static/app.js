@@ -13,6 +13,7 @@ const el = (id) => document.getElementById(id);
 
 let authed = false;
 let cachedStatus = null;
+let cachedNotes = [];
 let activeReviewFlow = null;
 
 // ---------- utilities ----------
@@ -121,7 +122,7 @@ async function route() {
     case "/review":
       showScreen("review");
       if (!activeReviewFlow || activeReviewFlow !== reviewFlow) {
-        reviewFlow.begin(cachedStatus ? cachedStatus.active_cycle : null);
+        await reviewFlow.begin(cachedStatus ? cachedStatus.active_cycle : null);
       }
       return;
     case "/quarterly":
@@ -205,12 +206,17 @@ async function renderStatusRoute() {
   const root = el("shell-content");
 
   // Paint the cached status immediately, then refresh.
-  if (cachedStatus) paintStatus(root, cachedStatus, Boolean(cachedStatus._offline));
+  if (cachedStatus) paintStatus(root, cachedStatus, Boolean(cachedStatus._offline), cachedNotes);
 
   try {
     const status = await api("/status");
     saveStatusCache(status);
-    if (currentPath() === "/") paintStatus(root, status, false);
+    let notes = [];
+    if (status.active_cycle) {
+      try { notes = await api(`/cycles/${status.active_cycle.id}/notes`); } catch (_) { notes = []; }
+    }
+    cachedNotes = notes || [];
+    if (currentPath() === "/") paintStatus(root, status, false, cachedNotes);
   } catch (err) {
     if (err.status === 401) {
       authed = false;
@@ -224,12 +230,12 @@ async function renderStatusRoute() {
       p.textContent = "Can't reach the server right now.";
       root.appendChild(p);
     } else if (currentPath() === "/") {
-      paintStatus(root, cachedStatus, true);
+      paintStatus(root, cachedStatus, true, cachedNotes);
     }
   }
 }
 
-function paintStatus(root, status, offline) {
+function paintStatus(root, status, offline, notes) {
   root.innerHTML = "";
 
   if (offline) {
@@ -243,7 +249,7 @@ function paintStatus(root, status, offline) {
     root.appendChild(buildReviewBanner(
       "It's time for the Sunday review.",
       "Start Sunday review",
-      () => { reviewFlow.begin(status.active_cycle); go("/review"); }
+      () => { go("/review"); }
     ));
   }
 
@@ -256,7 +262,7 @@ function paintStatus(root, status, offline) {
   }
 
   if (status.active_cycle) {
-    root.appendChild(buildActiveCycleCard(status));
+    root.appendChild(buildActiveCycleCard(status, notes || []));
   } else {
     root.appendChild(buildEmptyStateCard());
   }
@@ -269,15 +275,23 @@ function paintStatus(root, status, offline) {
   root.appendChild(streak);
 }
 
-function buildActiveCycleCard(status) {
+function buildActiveCycleCard(status, notes) {
   const c = status.active_cycle;
   const card = document.createElement("div");
   card.className = "card";
 
+  const head = document.createElement("div");
+  head.className = "card-head";
   const title = document.createElement("h1");
   title.className = "cycle-title";
   title.textContent = c.title;
-  card.appendChild(title);
+  head.appendChild(title);
+
+  const editBtn = document.createElement("button");
+  editBtn.className = "link-btn card-edit";
+  editBtn.textContent = "Edit";
+  head.appendChild(editBtn);
+  card.appendChild(head);
 
   if (c.intent) {
     const intent = document.createElement("p");
@@ -288,15 +302,28 @@ function buildActiveCycleCard(status) {
 
   card.appendChild(buildStateTrack(c.state));
 
+  // "Week N of ~M": the tilde marks target_weeks as a living estimate,
+  // and the one-tap −/+ makes adjusting it normal usage.
+  const captionRow = document.createElement("div");
+  captionRow.className = "state-caption-row";
+
   const caption = document.createElement("p");
   caption.className = "state-caption";
   const week = weekOf(c.started_at, c.target_weeks);
-  caption.innerHTML = "";
   const strong = document.createElement("strong");
   strong.textContent = STATE_LABELS[c.state] || c.state;
   caption.appendChild(strong);
-  caption.appendChild(document.createTextNode(` · Week ${week} of ${c.target_weeks}`));
-  card.appendChild(caption);
+  caption.appendChild(document.createTextNode(` · Week ${week} of ~${c.target_weeks}`));
+  captionRow.appendChild(caption);
+
+  const adjust = document.createElement("div");
+  adjust.className = "week-adjust";
+  const minus = weekAdjustButton("−", "One week less", c, -1);
+  const plus = weekAdjustButton("+", "One week more", c, +1);
+  adjust.appendChild(minus);
+  adjust.appendChild(plus);
+  captionRow.appendChild(adjust);
+  card.appendChild(captionRow);
 
   const kv = document.createElement("div");
   kv.className = "kv";
@@ -304,7 +331,216 @@ function buildActiveCycleCard(status) {
   kv.appendChild(kvItem("Friday show-slot", status.this_week_friday_show));
   card.appendChild(kv);
 
+  const editForm = buildEditCycleForm(c, () => {
+    editForm.hidden = true;
+    kv.hidden = false;
+  });
+  editForm.hidden = true;
+  card.appendChild(editForm);
+
+  editBtn.addEventListener("click", () => {
+    const editing = !editForm.hidden;
+    editForm.hidden = editing;
+    kv.hidden = !editing;
+    if (!editing) editForm.querySelector("textarea").focus();
+  });
+
+  card.appendChild(buildNotesSection(c, notes));
+
   return card;
+}
+
+function weekAdjustButton(label, aria, cycle, delta) {
+  const btn = document.createElement("button");
+  btn.className = "week-btn";
+  btn.textContent = label;
+  btn.setAttribute("aria-label", aria);
+  const next = cycle.target_weeks + delta;
+  if (next < 1 || next > 16) btn.disabled = true;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await api(`/cycles/${cycle.id}`, { method: "PATCH", body: { target_weeks: next } });
+      await renderStatusRoute();
+    } catch (err) {
+      toast(err.message);
+      btn.disabled = false;
+    }
+  });
+  return btn;
+}
+
+function buildEditCycleForm(cycle, onDone) {
+  const form = document.createElement("form");
+  form.className = "stack edit-form";
+
+  const intentField = textAreaField("edit-cycle-intent", "Intent");
+  intentField.querySelector("textarea").value = cycle.intent || "";
+  form.appendChild(intentField);
+
+  const showField = textField("edit-cycle-show-plan", "How will this be shown?", "text");
+  showField.querySelector("input").value = cycle.show_plan || "";
+  form.appendChild(showField);
+
+  const weeksField = textField("edit-cycle-weeks", "Target weeks (1–16, an estimate)", "text");
+  weeksField.querySelector("input").value = String(cycle.target_weeks);
+  form.appendChild(weeksField);
+
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "btn btn-primary";
+  save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn-ghost";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", onDone);
+  row.appendChild(save);
+  row.appendChild(cancel);
+  form.appendChild(row);
+
+  const err = document.createElement("p");
+  err.className = "error-text";
+  err.hidden = true;
+  form.appendChild(err);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    const weeks = parseInt(weeksField.querySelector("input").value.trim(), 10);
+    try {
+      await api(`/cycles/${cycle.id}`, {
+        method: "PATCH",
+        body: {
+          intent: intentField.querySelector("textarea").value.trim(),
+          show_plan: showField.querySelector("input").value.trim(),
+          target_weeks: Number.isNaN(weeks) ? cycle.target_weeks : weeks,
+        },
+      });
+      toast("Saved.");
+      await renderStatusRoute();
+    } catch (e2) {
+      err.textContent = e2.message;
+      err.hidden = false;
+    }
+  });
+
+  return form;
+}
+
+function buildNotesSection(cycle, notes) {
+  const section = document.createElement("div");
+  section.className = "notes";
+
+  const head = document.createElement("div");
+  head.className = "notes-head";
+  const label = document.createElement("div");
+  label.className = "kv-label";
+  label.textContent = "Notes";
+  head.appendChild(label);
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "link-btn notes-add";
+  addBtn.textContent = "+ Add note";
+  head.appendChild(addBtn);
+  section.appendChild(head);
+
+  const form = document.createElement("form");
+  form.className = "stack add-note-form";
+  form.hidden = true;
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "What happened? What did you figure out?";
+  textarea.rows = 3;
+  textarea.style.minHeight = "80px";
+  form.appendChild(textarea);
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.className = "btn btn-primary";
+  save.textContent = "Save note";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn-ghost";
+  cancel.textContent = "Cancel";
+  row.appendChild(save);
+  row.appendChild(cancel);
+  form.appendChild(row);
+  section.appendChild(form);
+
+  addBtn.addEventListener("click", () => {
+    form.hidden = false;
+    addBtn.hidden = true;
+    textarea.focus();
+  });
+  cancel.addEventListener("click", () => {
+    form.hidden = true;
+    addBtn.hidden = false;
+  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = textarea.value.trim();
+    if (!text) { toast("This needs an answer."); return; }
+    save.disabled = true;
+    try {
+      await api(`/cycles/${cycle.id}/notes`, { method: "POST", body: { text } });
+      toast("Note saved.");
+      await renderStatusRoute();
+    } catch (err) {
+      toast(err.message);
+      save.disabled = false;
+    }
+  });
+
+  if (notes.length > 0) {
+    section.appendChild(buildNotesList(cycle.id, notes, true));
+  }
+
+  return section;
+}
+
+function buildNotesList(cycleID, notes, deletable) {
+  const list = document.createElement("ul");
+  list.className = "note-list";
+  for (const n of notes) {
+    const item = document.createElement("li");
+    item.className = "note-item";
+
+    const text = document.createElement("p");
+    text.className = "note-text";
+    text.textContent = n.text;
+    item.appendChild(text);
+
+    const meta = document.createElement("div");
+    meta.className = "note-meta";
+    const date = document.createElement("span");
+    date.className = "note-date";
+    date.textContent = (n.created_at || "").slice(0, 10);
+    meta.appendChild(date);
+
+    if (deletable) {
+      const del = document.createElement("button");
+      del.className = "note-del";
+      del.setAttribute("aria-label", "Delete note");
+      del.textContent = "×";
+      del.addEventListener("click", async () => {
+        if (!confirm("Delete this note?")) return;
+        try {
+          await api(`/cycles/${cycleID}/notes/${n.id}`, { method: "DELETE" });
+          await renderStatusRoute();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+      meta.appendChild(del);
+    }
+
+    item.appendChild(meta);
+    list.appendChild(item);
+  }
+  return list;
 }
 
 function kvItem(label, value) {
@@ -383,7 +619,7 @@ function buildCreateForm() {
 
   form.appendChild(textField("new-cycle-title", "Title", "text", true));
   form.appendChild(textAreaField("new-cycle-intent", "Intent — what and why (optional)"));
-  form.appendChild(textField("new-cycle-weeks", "Target weeks (1–16)", "text", false, "8"));
+  form.appendChild(textField("new-cycle-weeks", "Target weeks — a first estimate, adjust anytime", "text", false, "1"));
   form.appendChild(textField("new-cycle-show-plan", "How will this be shown? (optional)", "text"));
 
   const submit = document.createElement("button");
@@ -407,7 +643,7 @@ function buildCreateForm() {
         body: {
           title: el("new-cycle-title").value.trim(),
           intent: el("new-cycle-intent").value.trim(),
-          target_weeks: weeksRaw ? parseInt(weeksRaw, 10) : 8,
+          target_weeks: weeksRaw ? parseInt(weeksRaw, 10) : 1,
           show_plan: el("new-cycle-show-plan").value.trim(),
         },
       });
@@ -547,10 +783,67 @@ function buildHistoryItem(c) {
     item.appendChild(a);
   }
 
+  // Notes load lazily per cycle so the history list stays one request.
+  const notesBtn = document.createElement("button");
+  notesBtn.className = "link-btn history-notes-toggle";
+  notesBtn.textContent = "Show notes";
+  item.appendChild(notesBtn);
+  notesBtn.addEventListener("click", async () => {
+    notesBtn.disabled = true;
+    try {
+      const notes = await api(`/cycles/${c.id}/notes`) || [];
+      notesBtn.remove();
+      const box = document.createElement("div");
+      box.className = "history-notes";
+      const label = document.createElement("div");
+      label.className = "kv-label";
+      label.textContent = "Notes";
+      box.appendChild(label);
+      if (notes.length === 0) {
+        const none = document.createElement("p");
+        none.className = "note-date";
+        none.textContent = "No notes.";
+        box.appendChild(none);
+      } else {
+        box.appendChild(buildNotesList(c.id, notes, false));
+      }
+      item.appendChild(box);
+    } catch (err) {
+      toast(err.message);
+      notesBtn.disabled = false;
+    }
+  });
+
   return item;
 }
 
 // ---------- shared question builders ----------
+
+function buildNotesContext(label, notes) {
+  const box = document.createElement("div");
+  box.className = "notes-context";
+  const l = document.createElement("div");
+  l.className = "kv-label";
+  l.textContent = label;
+  box.appendChild(l);
+  const list = document.createElement("ul");
+  list.className = "note-list";
+  for (const n of notes) {
+    const item = document.createElement("li");
+    item.className = "note-item";
+    const text = document.createElement("p");
+    text.className = "note-text";
+    text.textContent = n.text;
+    item.appendChild(text);
+    const date = document.createElement("span");
+    date.className = "note-date";
+    date.textContent = (n.created_at || "").slice(0, 10);
+    item.appendChild(date);
+    list.appendChild(item);
+  }
+  box.appendChild(list);
+  return box;
+}
 
 function qShell(title, hint, buildInput, onNext) {
   const wrap = document.createElement("div");
@@ -658,14 +951,26 @@ const reviewFlow = {
   cycle: null,
   answers: {},
   path: [],
+  notes: [],
 
-  begin(activeCycle) {
+  async begin(activeCycle) {
     activeReviewFlow = this;
     this.cycle = activeCycle || null;
     this.answers = {};
     this.path = [];
+    this.notes = [];
     el("review-step-label").textContent = "Weekly review";
+    if (this.cycle) {
+      try { this.notes = await api(`/cycles/${this.cycle.id}/notes`) || []; } catch (_) { this.notes = []; }
+    }
     this.goStep("how");
+  },
+
+  // Notes added since the last weekly review (all of them if none yet).
+  notesSinceLastReview() {
+    const since = cachedStatus && cachedStatus.last_review_date;
+    if (!since) return this.notes;
+    return this.notes.filter((n) => (n.created_at || "").slice(0, 10) >= since);
   },
 
   back() {
@@ -719,6 +1024,11 @@ const reviewFlow = {
     }
 
     if (stepId === "brain_dump_bury") {
+      // The cycle's notes are the distributed brain-dump — surface all of
+      // them as source material next to the input.
+      if (this.notes.length > 0) {
+        root.appendChild(buildNotesContext("Your notes from this cycle", this.notes));
+      }
       root.appendChild(qTextarea(
         "What did you learn, and why are you stopping?",
         "This is saved as the brain-dump if you bury the cycle. Nothing evaporates.",
@@ -776,6 +1086,10 @@ const reviewFlow = {
     }
 
     if (stepId === "next_step") {
+      const recent = this.notesSinceLastReview();
+      if (recent.length > 0) {
+        root.appendChild(buildNotesContext("Notes since your last review", recent));
+      }
       root.appendChild(qTextarea(
         "What is the ONE next step for this week?",
         "Exactly one thing.",

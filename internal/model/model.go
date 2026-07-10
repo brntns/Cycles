@@ -43,6 +43,13 @@ type Cycle struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+type CycleNote struct {
+	ID        string    `json:"id"`
+	CycleID   string    `json:"cycle_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Text      string    `json:"text"`
+}
+
 type QuestionStatus string
 
 const (
@@ -84,6 +91,7 @@ type QuarterlyReview struct {
 type Status struct {
 	ActiveCycle         *Cycle  `json:"active_cycle"`
 	DaysSinceLastReview *int    `json:"days_since_last_review"`
+	LastReviewDate      *string `json:"last_review_date"`
 	WeeklyReviewDue     bool    `json:"weekly_review_due"`
 	QuarterlyReviewDue  bool    `json:"quarterly_review_due"`
 	ReviewStreak        int     `json:"review_streak"`

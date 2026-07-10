@@ -146,6 +146,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
 
+  /cycles/{id}/notes:
+    post:
+      tags: [cycles]
+      summary: Add a progress note to a cycle
+      parameters:
+        - $ref: "#/components/parameters/CycleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CycleNote"
+        "404":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [cycles]
+      summary: List a cycle's notes, newest first
+      parameters:
+        - $ref: "#/components/parameters/CycleId"
+        - name: since
+          in: query
+          description: Only notes created on or after this date
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: List of notes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CycleNote"
+
+  /cycles/{id}/notes/{noteId}:
+    delete:
+      tags: [cycles]
+      summary: Delete a progress note
+      parameters:
+        - $ref: "#/components/parameters/CycleId"
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/Error"
+
   /reviews/weekly:
     post:
       tags: [reviews]
@@ -366,8 +430,21 @@ components:
       properties:
         title: { type: string }
         intent: { type: string }
-        target_weeks: { type: integer, minimum: 1, maximum: 16, default: 8 }
+        target_weeks:
+          type: integer
+          minimum: 1
+          maximum: 16
+          default: 1
+          description: A living estimate, not a commitment — editable anytime while active.
         show_plan: { type: string }
+
+    CycleNote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cycle_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        text: { type: string }
 
     CyclePatch:
       type: object
@@ -441,6 +518,7 @@ components:
             - $ref: "#/components/schemas/Cycle"
           nullable: true
         days_since_last_review: { type: integer, nullable: true }
+        last_review_date: { type: string, format: date, nullable: true }
         weekly_review_due: { type: boolean }
         quarterly_review_due: { type: boolean }
         review_streak: { type: integer }

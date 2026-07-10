@@ -56,7 +56,7 @@ This document is the handoff spec for Claude Code. Build exactly this scope; res
 | intent | text | one or two sentences: what am I building/learning and why |
 | state | enum | see state machine |
 | started_at | date | |
-| target_weeks | int | default 8, range 1–16 |
+| target_weeks | int | default 1, range 1–16 — a **living estimate**, not a commitment; freely editable while the cycle is active |
 | show_plan | text | how this will be shown at the end (repo, post, video…) — asked at creation, editable |
 | artifact_url | text nullable | filled when shown |
 | brain_dump | text nullable | required to enter `buried` or `completed` |
@@ -71,6 +71,17 @@ building ──► understanding ──► showing ──► completed
 - Only **one cycle may be in a non-terminal state at a time** (single active cycle is a deliberate constraint — reject creation of a second active cycle with a clear error).
 - Transition to `completed` requires `artifact_url` AND `brain_dump` to be set.
 - Transition to `buried` requires `brain_dump` ("what I learned, why I'm stopping").
+- While a cycle is active, `intent`, `show_plan` and `target_weeks` remain editable via PATCH — extending or shortening the estimate is normal usage, not an exception.
+
+### CycleNote (progress notes / Zwischenstände)
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | |
+| cycle_id | uuid | FK to Cycle |
+| created_at | timestamp | |
+| text | text | prose, not checkboxes — notes are **distributed brain-dumping**, never task items |
+
+When a cycle transitions to `completed` or `buried`, the brain-dump screen shows all of the cycle's notes alongside the input as source material.
 
 ### WeeklyReview
 | Field | Type | Notes |
@@ -104,7 +115,7 @@ building ──► understanding ──► showing ──► completed
 1. "How did the week go?" (free text, short)
 2. "Is the cycle still alive?" (yes / dying / dead) — "dying/dead" offers the bury flow (brain-dump prompt)
 3. "What state is the cycle in?" (offer valid transitions only)
-4. "What is the ONE next step for this week?" (free text — exactly one)
+4. "What is the ONE next step for this week?" (free text — exactly one; the notes added since the last review are shown above the question as context)
 5. "What will Friday's show-slot produce?" (free text, "nothing" is a valid answer)
 Persist as a WeeklyReview. Show a small "streak" of consecutive weekly reviews (subtle, not gamified — no badges, no confetti).
 
@@ -124,7 +135,11 @@ GET    /status                     → active cycle (or null), days since last w
 POST   /cycles                     → create (rejects if an active cycle exists)
 GET    /cycles                     → list, filterable by state
 GET    /cycles/{id}
-PATCH  /cycles/{id}                → edit fields / transition state (validates state machine)
+PATCH  /cycles/{id}                → edit fields / transition state (validates state machine);
+                                     intent, show_plan, target_weeks stay editable on an active cycle
+POST   /cycles/{id}/notes          → add a progress note
+GET    /cycles/{id}/notes          → list notes, newest first (optional ?since=YYYY-MM-DD)
+DELETE /cycles/{id}/notes/{noteId}
 POST   /reviews/weekly             → submit a completed weekly review
 GET    /reviews/weekly?limit=N
 POST   /reviews/quarterly
@@ -142,9 +157,9 @@ All responses JSON. Errors: `{ "error": "...", "detail": "..." }` with proper st
 
 Three screens only, mobile-first:
 
-1. **Status view** (default): active cycle title, state (as a simple 4-step indicator), week N of target, this week's `next_step` and `friday_show`. If a review is due: a single clear "Start Sunday review" button. Large type, generous spacing, thumb-reachable actions.
-2. **Review flow**: the guided questions, one per screen, big text input / big option buttons, forward-only with a back button. On finish: return to status view.
-3. **History view**: past cycles (completed and buried) with their brain-dumps and artifact links — the visible proof that nothing evaporates anymore. Read-only list, newest first.
+1. **Status view** (default): active cycle title, state (as a simple 4-step indicator), "week N of ~M" (the tilde signals the estimate), this week's `next_step` and `friday_show`. One-tap "+1 week" / "-1 week" adjusts the estimate in place — no warnings, no guilt UI. An edit affordance opens `intent`, `show_plan` and `target_weeks` for editing. A one-tap "Add note" opens a single text field (save, done — usable in <10 seconds on a phone); the cycle's notes are listed newest first. If a review is due: a single clear "Start Sunday review" button. Large type, generous spacing, thumb-reachable actions.
+2. **Review flow**: the guided questions, one per screen, big text input / big option buttons, forward-only with a back button. The brain-dump screen (bury/complete) shows all of the cycle's notes alongside the input. On finish: return to status view.
+3. **History view**: past cycles (completed and buried) with their brain-dumps, artifact links and progress notes — the visible proof that nothing evaporates anymore. Read-only list, newest first.
 
 PWA requirements: web app manifest (name, icons, standalone display), service worker with cache-first for the static shell (offline shows the last-known status; writes require connectivity — no offline sync in v1).
 

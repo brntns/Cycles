@@ -365,7 +365,7 @@ button:focus-visible, a:focus-visible {
   gap: 14px;
 }
 
-.kv-item .kv-label {
+.kv-label {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -380,6 +380,167 @@ button:focus-visible, a:focus-visible {
 }
 
 .kv-item .kv-value.is-empty { color: var(--ink-soft); }
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-edit {
+  margin-left: 0;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+}
+
+.state-caption-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.state-caption { margin: 0; }
+
+.week-adjust {
+  display: flex;
+  gap: 6px;
+}
+
+.week-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease;
+}
+
+.week-btn:hover:not(:disabled) { border-color: var(--ink-soft); }
+.week-btn:disabled { opacity: 0.35; cursor: default; }
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-row .btn { flex: 1; }
+
+.edit-form {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- notes ---------- */
+
+.notes {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notes-add {
+  margin-left: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.note-date {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.note-del {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.note-del:hover { color: var(--danger); background: var(--line); }
+
+.notes-context {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-notes {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-notes-toggle {
+  margin-left: 0;
+  margin-top: 10px;
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--accent);
+  font-weight: 600;
+}
 
 /* ---------- empty state / create form ---------- */
 
