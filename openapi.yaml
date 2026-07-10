@@ -1,0 +1,448 @@
+openapi: 3.0.3
+info:
+  title: Cycle Companion API
+  description: >
+    Single-user planning API for process people. The core object is a
+    project cycle, not a todo list. All state transitions are enforced
+    server-side. See SPEC.md in the repository for the full product spec.
+  version: "1.0.0"
+servers:
+  - url: /
+security:
+  - sessionCookie: []
+tags:
+  - name: auth
+  - name: status
+  - name: cycles
+  - name: reviews
+  - name: questions
+  - name: export
+  - name: health
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with the single-user password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Logged in. Sets a long-lived session cookie.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out and clear the session
+      responses:
+        "200":
+          description: Logged out
+
+  /status:
+    get:
+      tags: [status]
+      summary: Everyday check-in status
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+
+  /cycles:
+    post:
+      tags: [cycles]
+      summary: Create a cycle (rejected if an active cycle already exists)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CycleCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cycle"
+        "409":
+          description: An active cycle already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+    get:
+      tags: [cycles]
+      summary: List cycles
+      parameters:
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/CycleState"
+      responses:
+        "200":
+          description: List of cycles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Cycle"
+
+  /cycles/{id}:
+    get:
+      tags: [cycles]
+      summary: Get a cycle
+      parameters:
+        - $ref: "#/components/parameters/CycleId"
+      responses:
+        "200":
+          description: The cycle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cycle"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      tags: [cycles]
+      summary: Edit fields and/or transition state
+      parameters:
+        - $ref: "#/components/parameters/CycleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CyclePatch"
+      responses:
+        "200":
+          description: Updated cycle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cycle"
+        "422":
+          description: Invalid state transition or missing artifact/brain_dump
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /reviews/weekly:
+    post:
+      tags: [reviews]
+      summary: Submit a completed weekly review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeeklyReviewCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyReview"
+    get:
+      tags: [reviews]
+      summary: List weekly reviews, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of weekly reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeeklyReview"
+
+  /reviews/quarterly:
+    post:
+      tags: [reviews]
+      summary: Submit a completed quarterly review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuarterlyReviewCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuarterlyReview"
+    get:
+      tags: [reviews]
+      summary: List quarterly reviews, newest first
+      responses:
+        "200":
+          description: List of quarterly reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuarterlyReview"
+
+  /questions:
+    get:
+      tags: [questions]
+      summary: List parked questions
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/QuestionStatus"
+      responses:
+        "200":
+          description: List of parked questions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParkedQuestion"
+    post:
+      tags: [questions]
+      summary: Park a new big-life question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkedQuestion"
+
+  /questions/{id}:
+    patch:
+      tags: [questions]
+      summary: Change status and/or append a note (quarterly review flow)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: "#/components/schemas/QuestionStatus"
+                append_note:
+                  type: string
+      responses:
+        "200":
+          description: Updated question
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkedQuestion"
+
+  /export:
+    get:
+      tags: [export]
+      summary: Full JSON dump of all data
+      responses:
+        "200":
+          description: Full export
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /health:
+    get:
+      tags: [health]
+      summary: Health check (DB connectivity) for Railway
+      security: []
+      responses:
+        "200":
+          description: Healthy
+        "503":
+          description: DB unavailable
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: cycle_session
+
+  parameters:
+    CycleId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+
+    CycleState:
+      type: string
+      enum: [building, understanding, showing, completed, buried]
+
+    QuestionStatus:
+      type: string
+      enum: [parked, answered, dropped]
+
+    Cycle:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        intent: { type: string }
+        state: { $ref: "#/components/schemas/CycleState" }
+        started_at: { type: string, format: date }
+        target_weeks: { type: integer }
+        show_plan: { type: string }
+        artifact_url: { type: string, nullable: true }
+        brain_dump: { type: string, nullable: true }
+        ended_at: { type: string, format: date, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CycleCreate:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        intent: { type: string }
+        target_weeks: { type: integer, minimum: 1, maximum: 16, default: 8 }
+        show_plan: { type: string }
+
+    CyclePatch:
+      type: object
+      properties:
+        title: { type: string }
+        intent: { type: string }
+        target_weeks: { type: integer }
+        show_plan: { type: string }
+        artifact_url: { type: string }
+        brain_dump: { type: string }
+        state: { $ref: "#/components/schemas/CycleState" }
+
+    WeeklyReview:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        cycle_id: { type: string, format: uuid, nullable: true }
+        answers: { type: object }
+        next_step: { type: string }
+        friday_show: { type: string }
+        created_at: { type: string, format: date-time }
+
+    WeeklyReviewCreate:
+      type: object
+      required: [next_step, friday_show]
+      properties:
+        date: { type: string, format: date }
+        cycle_id: { type: string, format: uuid }
+        answers: { type: object }
+        next_step: { type: string }
+        friday_show: { type: string }
+
+    QuarterlyReview:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        answers: { type: object }
+        created_at: { type: string, format: date-time }
+
+    QuarterlyReviewCreate:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        answers: { type: object }
+
+    ParkedQuestionNote:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        note: { type: string }
+
+    ParkedQuestion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        question: { type: string }
+        created_at: { type: string, format: date }
+        status: { $ref: "#/components/schemas/QuestionStatus" }
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParkedQuestionNote"
+
+    Status:
+      type: object
+      properties:
+        active_cycle:
+          allOf:
+            - $ref: "#/components/schemas/Cycle"
+          nullable: true
+        days_since_last_review: { type: integer, nullable: true }
+        weekly_review_due: { type: boolean }
+        quarterly_review_due: { type: boolean }
+        review_streak: { type: integer }
+        this_week_next_step: { type: string, nullable: true }
+        this_week_friday_show: { type: string, nullable: true }
