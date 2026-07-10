@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f6f4ef">
-<title>Cycle Companion</title>
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171614" media="(prefers-color-scheme: dark)">
+<title>Cycles</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -14,59 +15,69 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div id="app" class="app">
+<div id="app">
   <div id="toast" class="toast" hidden></div>
 
   <!-- LOGIN -->
   <section id="screen-login" class="screen" hidden>
-    <div class="center-column">
-      <h1 class="wordmark">Cycle Companion</h1>
-      <form id="login-form" class="stack">
-        <label class="field">
-          <span class="field-label">Password</span>
-          <input type="password" id="login-password" autocomplete="current-password" required>
-        </label>
-        <button type="submit" class="btn btn-primary btn-block">Log in</button>
-        <p id="login-error" class="error-text" hidden></p>
-      </form>
-    </div>
+    <main class="login-wrap">
+      <div class="login-box">
+        <img class="login-icon" src="/icons/icon-192.png" alt="" width="64" height="64">
+        <h1 class="wordmark">Cycles</h1>
+        <p class="tagline">What is my current cycle, and what's the next step?</p>
+        <form id="login-form" class="stack">
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input type="password" id="login-password" autocomplete="current-password" required>
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">Log in</button>
+          <p id="login-error" class="error-text" hidden></p>
+        </form>
+      </div>
+    </main>
   </section>
 
-  <!-- STATUS -->
-  <section id="screen-status" class="screen" hidden>
+  <!-- SHELL: status + history share header/nav -->
+  <section id="screen-shell" class="screen" hidden>
     <header class="topbar">
-      <span class="topbar-title">Cycle Companion</span>
-      <button id="logout-btn" class="icon-btn" title="Log out" aria-label="Log out">&#x2039;</button>
+      <div class="topbar-inner">
+        <a class="brand" href="#/">Cycles</a>
+        <nav class="topnav" aria-label="Navigation">
+          <a href="#/" data-nav="/">Status</a>
+          <a href="#/history" data-nav="/history">History</a>
+        </nav>
+        <button id="logout-btn" class="link-btn">Log out</button>
+      </div>
     </header>
 
-    <div id="status-content" class="center-column"></div>
+    <main id="shell-content" class="content"></main>
 
     <nav class="tabbar" aria-label="Navigation">
-      <button class="tab-btn is-active" data-screen="status">Status</button>
-      <button class="tab-btn" data-screen="history">History</button>
+      <a href="#/" data-nav="/">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>
+        <span>Status</span>
+      </a>
+      <a href="#/history" data-nav="/history">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span>History</span>
+      </a>
     </nav>
   </section>
 
-  <!-- REVIEW FLOW -->
+  <!-- REVIEW FLOW (weekly + quarterly) -->
   <section id="screen-review" class="screen" hidden>
     <header class="topbar">
-      <button id="review-back" class="icon-btn" aria-label="Back">&#x2039;</button>
-      <span class="topbar-title" id="review-step-label"></span>
-      <button id="review-cancel" class="icon-btn" aria-label="Cancel">&#x2715;</button>
+      <div class="topbar-inner">
+        <button id="review-back" class="icon-btn" aria-label="Back">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="topbar-title" id="review-step-label"></span>
+        <button id="review-cancel" class="icon-btn" aria-label="Cancel review">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
     </header>
-    <div id="review-content" class="center-column"></div>
-  </section>
-
-  <!-- HISTORY -->
-  <section id="screen-history" class="screen" hidden>
-    <header class="topbar">
-      <span class="topbar-title">History</span>
-    </header>
-    <div id="history-content" class="center-column"></div>
-    <nav class="tabbar" aria-label="Navigation">
-      <button class="tab-btn" data-screen="status">Status</button>
-      <button class="tab-btn is-active" data-screen="history">History</button>
-    </nav>
+    <main id="review-content" class="content content-review"></main>
   </section>
 </div>
 

@@ -10,14 +10,12 @@ const STATE_LABELS = {
 };
 
 const el = (id) => document.getElementById(id);
-const screens = {
-  login: el("screen-login"),
-  status: el("screen-status"),
-  review: el("screen-review"),
-  history: el("screen-history"),
-};
 
+let authed = false;
+let cachedStatus = null;
 let activeReviewFlow = null;
+
+// ---------- utilities ----------
 
 let toastTimer = null;
 function toast(msg) {
@@ -26,16 +24,6 @@ function toast(msg) {
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
-}
-
-function showScreen(name) {
-  for (const key of Object.keys(screens)) {
-    screens[key].hidden = key !== name;
-  }
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.classList.toggle("is-active", btn.dataset.screen === name);
-  });
-  window.scrollTo(0, 0);
 }
 
 async function api(path, opts = {}) {
@@ -52,58 +40,135 @@ async function api(path, opts = {}) {
   if (!res.ok) {
     const err = new Error((data && (data.detail || data.error)) || `Request failed (${res.status})`);
     err.status = res.status;
-    err.body = data;
     throw err;
   }
   return data;
+}
+
+function saveStatusCache(status) {
+  cachedStatus = status;
+  try { localStorage.setItem("cycles:lastStatus", JSON.stringify(status)); } catch (_) { /* ignore */ }
+}
+
+function loadStatusCache() {
+  try {
+    const raw = localStorage.getItem("cycles:lastStatus");
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- router ----------
+
+const SCREENS = ["login", "shell", "review"];
+
+function showScreen(name) {
+  for (const s of SCREENS) {
+    el(`screen-${s}`).hidden = s !== name;
+  }
+  window.scrollTo(0, 0);
+}
+
+function currentPath() {
+  const h = location.hash.replace(/^#/, "");
+  return h === "" ? "/" : h;
+}
+
+function go(path, replace) {
+  if (replace) {
+    location.replace("#" + path);
+  } else {
+    location.hash = path;
+  }
+}
+
+function setNav(path) {
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    a.classList.toggle("active", a.dataset.nav === path);
+  });
+}
+
+async function route() {
+  const path = currentPath();
+
+  if (!authed) {
+    if (path !== "/login") { go("/login", true); return; }
+    showScreen("login");
+    setTimeout(() => el("login-password").focus(), 50);
+    return;
+  }
+
+  // Leaving the review screen resets any in-progress flow.
+  if (path !== "/review" && path !== "/quarterly" && activeReviewFlow) {
+    activeReviewFlow = null;
+  }
+
+  switch (path) {
+    case "/login":
+      go("/", true);
+      return;
+    case "/":
+      showScreen("shell");
+      setNav("/");
+      await renderStatusRoute();
+      return;
+    case "/history":
+      showScreen("shell");
+      setNav("/history");
+      await renderHistoryRoute();
+      return;
+    case "/review":
+      showScreen("review");
+      if (!activeReviewFlow || activeReviewFlow !== reviewFlow) {
+        reviewFlow.begin(cachedStatus ? cachedStatus.active_cycle : null);
+      }
+      return;
+    case "/quarterly":
+      showScreen("review");
+      if (!activeReviewFlow || activeReviewFlow !== quarterlyFlow) {
+        await quarterlyFlow.begin();
+      }
+      return;
+    default:
+      go("/", true);
+  }
 }
 
 // ---------- boot ----------
 
 async function boot() {
   wireStaticHandlers();
+  cachedStatus = loadStatusCache();
   try {
     const status = await api("/status");
-    localStorage.setItem("cycles:lastStatus", JSON.stringify(status));
-    renderStatus(status, false);
-    showScreen("status");
+    saveStatusCache(status);
+    authed = true;
   } catch (err) {
     if (err.status === 401) {
-      showScreen("login");
-      return;
-    }
-    // Offline or network failure: fall back to the last known status.
-    const cached = localStorage.getItem("cycles:lastStatus");
-    if (cached) {
-      renderStatus(JSON.parse(cached), true);
-      showScreen("status");
-    } else {
-      showScreen("login");
+      authed = false;
+    } else if (cachedStatus) {
+      // Network failure but we've been here before: show stale data.
+      authed = true;
+      cachedStatus._offline = true;
     }
   }
+  window.addEventListener("hashchange", route);
+  route();
 }
 
 function wireStaticHandlers() {
   el("login-form").addEventListener("submit", onLoginSubmit);
   el("logout-btn").addEventListener("click", onLogout);
-  el("review-back").addEventListener("click", () => activeReviewFlow.back());
+  el("review-back").addEventListener("click", () => {
+    if (activeReviewFlow) activeReviewFlow.back();
+  });
   el("review-cancel").addEventListener("click", () => {
     if (confirm("Cancel this review? Nothing will be saved.")) {
-      showScreen("status");
+      activeReviewFlow = null;
+      go("/");
     }
   });
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => onTabClick(btn.dataset.screen));
-  });
-}
-
-async function onTabClick(name) {
-  if (name === "history") {
-    await loadHistory();
-  } else {
-    await refreshStatus();
-  }
-  showScreen(name);
 }
 
 async function onLoginSubmit(e) {
@@ -114,8 +179,11 @@ async function onLoginSubmit(e) {
   try {
     await api("/auth/login", { method: "POST", body: { password } });
     el("login-password").value = "";
-    await refreshStatus();
-    showScreen("status");
+    authed = true;
+    const status = await api("/status");
+    saveStatusCache(status);
+    go("/", true);
+    route();
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.hidden = false;
@@ -124,21 +192,44 @@ async function onLoginSubmit(e) {
 
 async function onLogout() {
   try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* ignore */ }
-  localStorage.removeItem("cycles:lastStatus");
-  showScreen("login");
-}
-
-async function refreshStatus() {
-  const status = await api("/status");
-  localStorage.setItem("cycles:lastStatus", JSON.stringify(status));
-  renderStatus(status, false);
-  return status;
+  authed = false;
+  cachedStatus = null;
+  try { localStorage.removeItem("cycles:lastStatus"); } catch (_) { /* ignore */ }
+  go("/login", true);
+  route();
 }
 
 // ---------- status view ----------
 
-function renderStatus(status, offline) {
-  const root = el("status-content");
+async function renderStatusRoute() {
+  const root = el("shell-content");
+
+  // Paint the cached status immediately, then refresh.
+  if (cachedStatus) paintStatus(root, cachedStatus, Boolean(cachedStatus._offline));
+
+  try {
+    const status = await api("/status");
+    saveStatusCache(status);
+    if (currentPath() === "/") paintStatus(root, status, false);
+  } catch (err) {
+    if (err.status === 401) {
+      authed = false;
+      go("/login", true);
+      return;
+    }
+    if (!cachedStatus) {
+      root.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "offline-note";
+      p.textContent = "Can't reach the server right now.";
+      root.appendChild(p);
+    } else if (currentPath() === "/") {
+      paintStatus(root, cachedStatus, true);
+    }
+  }
+}
+
+function paintStatus(root, status, offline) {
   root.innerHTML = "";
 
   if (offline) {
@@ -148,17 +239,11 @@ function renderStatus(status, offline) {
     root.appendChild(note);
   }
 
-  if (status.active_cycle) {
-    root.appendChild(buildActiveCycleCard(status));
-  } else {
-    root.appendChild(buildEmptyStateCard());
-  }
-
   if (status.weekly_review_due) {
     root.appendChild(buildReviewBanner(
-      "The weekly review is open.",
+      "It's time for the Sunday review.",
       "Start Sunday review",
-      () => reviewFlow.start(status.active_cycle)
+      () => { reviewFlow.begin(status.active_cycle); go("/review"); }
     ));
   }
 
@@ -166,14 +251,20 @@ function renderStatus(status, offline) {
     root.appendChild(buildReviewBanner(
       "The quarterly review has unlocked.",
       "Start quarterly review",
-      () => quarterlyFlow.start()
+      () => { go("/quarterly"); }
     ));
+  }
+
+  if (status.active_cycle) {
+    root.appendChild(buildActiveCycleCard(status));
+  } else {
+    root.appendChild(buildEmptyStateCard());
   }
 
   const streak = document.createElement("p");
   streak.className = "streak";
   streak.textContent = status.review_streak > 0
-    ? `${status.review_streak} week review streak`
+    ? `${status.review_streak}-week review streak`
     : "No review streak yet";
   root.appendChild(streak);
 }
@@ -197,21 +288,20 @@ function buildActiveCycleCard(status) {
 
   card.appendChild(buildStateTrack(c.state));
 
-  const stateLabel = document.createElement("div");
-  stateLabel.className = "state-label";
-  stateLabel.textContent = STATE_LABELS[c.state] || c.state;
-  card.appendChild(stateLabel);
-
+  const caption = document.createElement("p");
+  caption.className = "state-caption";
   const week = weekOf(c.started_at, c.target_weeks);
-  const weekLabel = document.createElement("div");
-  weekLabel.className = "week-label";
-  weekLabel.textContent = `Week ${week} of ${c.target_weeks}`;
-  card.appendChild(weekLabel);
+  caption.innerHTML = "";
+  const strong = document.createElement("strong");
+  strong.textContent = STATE_LABELS[c.state] || c.state;
+  caption.appendChild(strong);
+  caption.appendChild(document.createTextNode(` · Week ${week} of ${c.target_weeks}`));
+  card.appendChild(caption);
 
   const kv = document.createElement("div");
   kv.className = "kv";
-  kv.appendChild(kvItem("This week's next step", status.this_week_next_step || "Not set yet"));
-  kv.appendChild(kvItem("Friday show-slot", status.this_week_friday_show || "Not set yet"));
+  kv.appendChild(kvItem("This week's next step", status.this_week_next_step));
+  kv.appendChild(kvItem("Friday show-slot", status.this_week_friday_show));
   card.appendChild(kv);
 
   return card;
@@ -224,8 +314,8 @@ function kvItem(label, value) {
   l.className = "kv-label";
   l.textContent = label;
   const v = document.createElement("div");
-  v.className = "kv-value";
-  v.textContent = value;
+  v.className = "kv-value" + (value ? "" : " is-empty");
+  v.textContent = value || "Not set yet";
   wrap.appendChild(l);
   wrap.appendChild(v);
   return wrap;
@@ -238,7 +328,7 @@ function buildStateTrack(currentState) {
   STATE_ORDER.forEach((s, i) => {
     const step = document.createElement("div");
     step.className = "state-step";
-    if (i < idx) step.classList.add("is-done");
+    if (idx >= 0 && i < idx) step.classList.add("is-done");
     if (i === idx) step.classList.add("is-current");
     track.appendChild(step);
   });
@@ -247,8 +337,7 @@ function buildStateTrack(currentState) {
 
 function weekOf(startedAt, targetWeeks) {
   const start = new Date(startedAt + "T00:00:00Z");
-  const now = new Date();
-  const days = Math.floor((now - start) / 86400000);
+  const days = Math.floor((Date.now() - start.getTime()) / 86400000);
   const week = Math.max(1, Math.floor(days / 7) + 1);
   return Math.min(week, targetWeeks + 4);
 }
@@ -256,6 +345,11 @@ function weekOf(startedAt, targetWeeks) {
 function buildEmptyStateCard() {
   const card = document.createElement("div");
   card.className = "card empty-state";
+
+  const glyph = document.createElement("div");
+  glyph.className = "empty-glyph";
+  glyph.textContent = "◌";
+  card.appendChild(glyph);
 
   const h2 = document.createElement("h2");
   h2.textContent = "No active cycle";
@@ -265,10 +359,27 @@ function buildEmptyStateCard() {
   p.textContent = "Start one when you're ready to build or learn something.";
   card.appendChild(p);
 
+  const startBtn = document.createElement("button");
+  startBtn.className = "btn btn-primary";
+  startBtn.textContent = "Start a new cycle";
+  card.appendChild(startBtn);
+
+  const form = buildCreateForm();
+  form.hidden = true;
+  card.appendChild(form);
+
+  startBtn.addEventListener("click", () => {
+    startBtn.hidden = true;
+    form.hidden = false;
+    form.querySelector("input").focus();
+  });
+
+  return card;
+}
+
+function buildCreateForm() {
   const form = document.createElement("form");
-  form.className = "stack";
-  form.style.marginTop = "20px";
-  form.style.textAlign = "left";
+  form.className = "stack create-form";
 
   form.appendChild(textField("new-cycle-title", "Title", "text", true));
   form.appendChild(textAreaField("new-cycle-intent", "Intent — what and why (optional)"));
@@ -289,29 +400,26 @@ function buildEmptyStateCard() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     err.hidden = true;
-    const title = el("new-cycle-title").value.trim();
     const weeksRaw = el("new-cycle-weeks").value.trim();
-    const weeks = weeksRaw ? parseInt(weeksRaw, 10) : 8;
     try {
       await api("/cycles", {
         method: "POST",
         body: {
-          title,
+          title: el("new-cycle-title").value.trim(),
           intent: el("new-cycle-intent").value.trim(),
-          target_weeks: weeks,
+          target_weeks: weeksRaw ? parseInt(weeksRaw, 10) : 8,
           show_plan: el("new-cycle-show-plan").value.trim(),
         },
       });
       toast("Cycle started.");
-      await refreshStatus();
+      await renderStatusRoute();
     } catch (e2) {
       err.textContent = e2.message;
       err.hidden = false;
     }
   });
 
-  card.appendChild(form);
-  return card;
+  return form;
 }
 
 function textField(id, label, type, required, placeholder) {
@@ -360,8 +468,8 @@ function buildReviewBanner(text, buttonLabel, onClick) {
 
 // ---------- history view ----------
 
-async function loadHistory() {
-  const root = el("history-content");
+async function renderHistoryRoute() {
+  const root = el("shell-content");
   root.innerHTML = "<p class=\"offline-note\">Loading…</p>";
   try {
     const [completed, buried] = await Promise.all([
@@ -371,11 +479,17 @@ async function loadHistory() {
     const all = [...(completed || []), ...(buried || [])].sort(
       (a, b) => new Date(b.ended_at || b.created_at) - new Date(a.ended_at || a.created_at)
     );
+    if (currentPath() !== "/history") return;
     root.innerHTML = "";
     if (all.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.innerHTML = "<h2>Nothing here yet</h2><p>Finished and buried cycles will show up here — nothing evaporates.</p>";
+      empty.className = "card empty-state";
+      const h2 = document.createElement("h2");
+      h2.textContent = "Nothing here yet";
+      const p = document.createElement("p");
+      p.textContent = "Finished and buried cycles will show up here — nothing evaporates.";
+      empty.appendChild(h2);
+      empty.appendChild(p);
       root.appendChild(empty);
       return;
     }
@@ -383,7 +497,16 @@ async function loadHistory() {
       root.appendChild(buildHistoryItem(c));
     }
   } catch (err) {
-    root.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+    if (err.status === 401) {
+      authed = false;
+      go("/login", true);
+      return;
+    }
+    root.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "error-text";
+    p.textContent = err.message;
+    root.appendChild(p);
   }
 }
 
@@ -391,13 +514,21 @@ function buildHistoryItem(c) {
   const item = document.createElement("div");
   item.className = "history-item";
 
+  const head = document.createElement("div");
+  head.className = "history-head";
   const h3 = document.createElement("h3");
   h3.textContent = c.title;
-  item.appendChild(h3);
+  head.appendChild(h3);
+
+  const tag = document.createElement("span");
+  tag.className = `state-tag ${c.state}`;
+  tag.textContent = STATE_LABELS[c.state] || c.state;
+  head.appendChild(tag);
+  item.appendChild(head);
 
   const meta = document.createElement("div");
   meta.className = "history-meta";
-  meta.textContent = `${STATE_LABELS[c.state] || c.state} · ${c.started_at}${c.ended_at ? " – " + c.ended_at : ""}`;
+  meta.textContent = `${c.started_at}${c.ended_at ? " — " + c.ended_at : ""}`;
   item.appendChild(meta);
 
   if (c.brain_dump) {
@@ -419,10 +550,106 @@ function buildHistoryItem(c) {
   return item;
 }
 
-function escapeHtml(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
+// ---------- shared question builders ----------
+
+function qShell(title, hint, buildInput, onNext) {
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.style.gap = "18px";
+
+  const h = document.createElement("h2");
+  h.className = "question-title";
+  h.textContent = title;
+  wrap.appendChild(h);
+
+  if (hint) {
+    const p = document.createElement("p");
+    p.className = "question-hint";
+    p.textContent = hint;
+    wrap.appendChild(p);
+  }
+
+  const field = buildInput(wrap);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn-primary btn-block";
+  btn.textContent = "Continue";
+  btn.addEventListener("click", () => {
+    if (!field.valid()) { toast("This needs an answer."); return; }
+    onNext(field.getValue());
+  });
+  wrap.appendChild(btn);
+
+  return wrap;
+}
+
+function qTextarea(title, hint, value, onNext, requireValue) {
+  return qShell(title, hint, (wrap) => {
+    const textarea = document.createElement("textarea");
+    textarea.value = value || "";
+    wrap.appendChild(textarea);
+    // Cmd/Ctrl+Enter advances, matching "one question per screen" pacing.
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        wrap.querySelector(".btn-primary").click();
+      }
+    });
+    setTimeout(() => textarea.focus(), 60);
+    return {
+      getValue: () => textarea.value.trim(),
+      valid: () => !requireValue || textarea.value.trim().length > 0,
+    };
+  }, onNext);
+}
+
+function qInput(title, hint, value, onNext) {
+  return qShell(title, hint, (wrap) => {
+    const input = document.createElement("input");
+    input.type = "url";
+    input.value = value || "";
+    input.placeholder = "https://…";
+    wrap.appendChild(input);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") wrap.querySelector(".btn-primary").click();
+    });
+    setTimeout(() => input.focus(), 60);
+    return {
+      getValue: () => input.value.trim(),
+      valid: () => input.value.trim().length > 0,
+    };
+  }, onNext);
+}
+
+function qOptions(title, hint, options, onNext) {
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.style.gap = "18px";
+
+  const h = document.createElement("h2");
+  h.className = "question-title";
+  h.textContent = title;
+  wrap.appendChild(h);
+
+  if (hint) {
+    const p = document.createElement("p");
+    p.className = "question-hint";
+    p.textContent = hint;
+    wrap.appendChild(p);
+  }
+
+  const list = document.createElement("div");
+  list.className = "option-list";
+  for (const opt of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-option";
+    btn.textContent = opt.label;
+    btn.addEventListener("click", () => onNext(opt.value));
+    list.appendChild(btn);
+  }
+  wrap.appendChild(list);
+  return wrap;
 }
 
 // ---------- weekly review flow ----------
@@ -432,25 +659,26 @@ const reviewFlow = {
   answers: {},
   path: [],
 
-  start(activeCycle) {
+  begin(activeCycle) {
     activeReviewFlow = this;
     this.cycle = activeCycle || null;
     this.answers = {};
     this.path = [];
-    showScreen("review");
-    this.go("how");
+    el("review-step-label").textContent = "Weekly review";
+    this.goStep("how");
   },
 
   back() {
     if (this.path.length <= 1) {
-      showScreen("status");
+      activeReviewFlow = null;
+      go("/");
       return;
     }
     this.path.pop();
     this.render(this.path[this.path.length - 1]);
   },
 
-  go(stepId) {
+  goStep(stepId) {
     this.path.push(stepId);
     this.render(stepId);
   },
@@ -458,23 +686,23 @@ const reviewFlow = {
   render(stepId) {
     const root = el("review-content");
     root.innerHTML = "";
-    el("review-step-label").textContent = "Weekly review";
+    window.scrollTo(0, 0);
 
     if (stepId === "how") {
-      root.appendChild(this.questionTextarea(
+      root.appendChild(qTextarea(
         "How did the week go?",
         null,
         this.answers.how_did_it_go,
         (val) => {
           this.answers.how_did_it_go = val;
-          this.go(this.cycle ? "alive" : "next_step");
+          this.goStep(this.cycle ? "alive" : "next_step");
         }
       ));
       return;
     }
 
     if (stepId === "alive") {
-      root.appendChild(this.questionOptions(
+      root.appendChild(qOptions(
         "Is the cycle still alive?",
         null,
         [
@@ -484,51 +712,46 @@ const reviewFlow = {
         ],
         (val) => {
           this.answers.alive = val;
-          if (val === "dying" || val === "dead") {
-            this.go("brain_dump_bury");
-          } else {
-            this.go("state");
-          }
+          this.goStep(val === "dying" || val === "dead" ? "brain_dump_bury" : "state");
         }
       ));
       return;
     }
 
     if (stepId === "brain_dump_bury") {
-      root.appendChild(this.questionTextarea(
+      root.appendChild(qTextarea(
         "What did you learn, and why are you stopping?",
         "This is saved as the brain-dump if you bury the cycle. Nothing evaporates.",
         this.answers.brainDump,
         (val) => {
           this.answers.brainDump = val;
-          this.go("state");
+          this.goStep("state");
         }
       ));
       return;
     }
 
     if (stepId === "state") {
-      const options = this.stateOptions();
-      root.appendChild(this.questionOptions(
+      root.appendChild(qOptions(
         "What state is the cycle in?",
         null,
-        options,
+        this.stateOptions(),
         (val) => {
           this.answers.newState = val;
           if (val === this.cycle.state) {
-            this.go("next_step");
+            this.goStep("next_step");
           } else if (val === "buried" && !this.answers.brainDump) {
-            this.go("brain_dump_bury");
+            this.goStep("brain_dump_bury");
           } else if (val === "completed") {
             if (!this.cycle.artifact_url && !this.answers.artifactUrl) {
-              this.go("artifact_url");
+              this.goStep("artifact_url");
             } else if (!this.cycle.brain_dump && !this.answers.brainDump) {
-              this.go("brain_dump_bury");
+              this.goStep("brain_dump_bury");
             } else {
-              this.go("next_step");
+              this.goStep("next_step");
             }
           } else {
-            this.go("next_step");
+            this.goStep("next_step");
           }
         }
       ));
@@ -536,16 +759,16 @@ const reviewFlow = {
     }
 
     if (stepId === "artifact_url") {
-      root.appendChild(this.questionInput(
+      root.appendChild(qInput(
         "Where can it be seen?",
         "A link to the repo, post, or video — this is how the cycle gets shown.",
         this.answers.artifactUrl,
         (val) => {
           this.answers.artifactUrl = val;
           if (!this.cycle.brain_dump && !this.answers.brainDump) {
-            this.go("brain_dump_bury");
+            this.goStep("brain_dump_bury");
           } else {
-            this.go("next_step");
+            this.goStep("next_step");
           }
         }
       ));
@@ -553,13 +776,13 @@ const reviewFlow = {
     }
 
     if (stepId === "next_step") {
-      root.appendChild(this.questionTextarea(
+      root.appendChild(qTextarea(
         "What is the ONE next step for this week?",
         "Exactly one thing.",
         this.answers.nextStep,
         (val) => {
           this.answers.nextStep = val;
-          this.go("friday_show");
+          this.goStep("friday_show");
         },
         true
       ));
@@ -567,9 +790,9 @@ const reviewFlow = {
     }
 
     if (stepId === "friday_show") {
-      root.appendChild(this.questionTextarea(
+      root.appendChild(qTextarea(
         "What will Friday's show-slot produce?",
-        "\"Nothing this week\" is a valid answer.",
+        "“Nothing this week” is a valid answer.",
         this.answers.fridayShow,
         (val) => {
           this.answers.fridayShow = val;
@@ -591,90 +814,10 @@ const reviewFlow = {
     for (const s of transitions[current] || []) {
       const label = s === "completed" ? "Complete it — show what I made"
         : s === "buried" ? "Bury it"
-        : STATE_LABELS[s];
+        : `Move to ${STATE_LABELS[s].toLowerCase()}`;
       opts.push({ value: s, label });
     }
     return opts;
-  },
-
-  questionTextarea(title, hint, value, onNext, requireValue) {
-    return this.questionShell(title, hint, (wrap) => {
-      const textarea = document.createElement("textarea");
-      textarea.value = value || "";
-      textarea.autofocus = true;
-      wrap.appendChild(textarea);
-      return {
-        getValue: () => textarea.value.trim(),
-        valid: () => !requireValue || textarea.value.trim().length > 0,
-      };
-    }, onNext);
-  },
-
-  questionInput(title, hint, value, onNext) {
-    return this.questionShell(title, hint, (wrap) => {
-      const input = document.createElement("input");
-      input.type = "url";
-      input.value = value || "";
-      input.autofocus = true;
-      wrap.appendChild(input);
-      return {
-        getValue: () => input.value.trim(),
-        valid: () => input.value.trim().length > 0,
-      };
-    }, onNext);
-  },
-
-  questionOptions(title, hint, options, onNext) {
-    const wrap = document.createElement("div");
-    wrap.className = "stack";
-    const h = document.createElement("h2");
-    h.className = "question-title";
-    h.textContent = title;
-    wrap.appendChild(h);
-    if (hint) {
-      const p = document.createElement("p");
-      p.className = "question-hint";
-      p.textContent = hint;
-      wrap.appendChild(p);
-    }
-    const list = document.createElement("div");
-    list.className = "option-list";
-    for (const opt of options) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "btn btn-option";
-      btn.textContent = opt.label;
-      btn.addEventListener("click", () => onNext(opt.value));
-      list.appendChild(btn);
-    }
-    wrap.appendChild(list);
-    return wrap;
-  },
-
-  questionShell(title, hint, buildInput, onNext) {
-    const wrap = document.createElement("div");
-    wrap.className = "stack";
-    const h = document.createElement("h2");
-    h.className = "question-title";
-    h.textContent = title;
-    wrap.appendChild(h);
-    if (hint) {
-      const p = document.createElement("p");
-      p.className = "question-hint";
-      p.textContent = hint;
-      wrap.appendChild(p);
-    }
-    const field = buildInput(wrap);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-primary btn-block";
-    btn.textContent = "Continue";
-    btn.addEventListener("click", () => {
-      if (!field.valid()) { toast("This needs an answer."); return; }
-      onNext(field.getValue());
-    });
-    wrap.appendChild(btn);
-    return wrap;
   },
 
   async submit() {
@@ -702,10 +845,14 @@ const reviewFlow = {
       }
 
       toast("Weekly review saved.");
-      await refreshStatus();
-      showScreen("status");
+      activeReviewFlow = null;
+      go("/");
     } catch (err) {
-      root.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+      root.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "error-text";
+      p.textContent = err.message;
+      root.appendChild(p);
       const retry = document.createElement("button");
       retry.className = "btn btn-block";
       retry.textContent = "Back";
@@ -716,41 +863,36 @@ const reviewFlow = {
 };
 
 // ---------- quarterly review flow ----------
-// Reuses the review screen with its own short, linear sequence:
-// job question -> cycles-this-quarter question -> one prompt per parked
-// question -> submit.
 
 const quarterlyFlow = {
   answers: {},
   questions: [],
-  qIndex: 0,
   path: [],
 
-  async start() {
+  async begin() {
     activeReviewFlow = this;
-    showScreen("review");
     el("review-step-label").textContent = "Quarterly review";
-    this.answers = { notes: {} };
-    this.qIndex = 0;
-    this.path = ["job"];
+    this.answers = {};
+    this.path = [];
     try {
-      this.questions = await api("/questions?status=parked");
+      this.questions = await api("/questions?status=parked") || [];
     } catch (_) {
       this.questions = [];
     }
-    this.render("job");
+    this.goStep("job");
   },
 
   back() {
     if (this.path.length <= 1) {
-      showScreen("status");
+      activeReviewFlow = null;
+      go("/");
       return;
     }
     this.path.pop();
     this.render(this.path[this.path.length - 1]);
   },
 
-  go(stepId) {
+  goStep(stepId) {
     this.path.push(stepId);
     this.render(stepId);
   },
@@ -758,26 +900,26 @@ const quarterlyFlow = {
   render(stepId) {
     const root = el("review-content");
     root.innerHTML = "";
+    window.scrollTo(0, 0);
 
     if (stepId === "job") {
-      root.appendChild(reviewFlow.questionTextarea(
+      root.appendChild(qTextarea(
         "Is the job still carrying the foundation?",
         null,
         this.answers.job,
-        (val) => { this.answers.job = val; this.go("cycles"); }
+        (val) => { this.answers.job = val; this.goStep("cycles"); }
       ));
       return;
     }
 
     if (stepId === "cycles") {
-      root.appendChild(reviewFlow.questionTextarea(
+      root.appendChild(qTextarea(
         "Did the cycles work this quarter?",
         "Think about what got completed or buried in the last 12 weeks.",
         this.answers.cycles,
         (val) => {
           this.answers.cycles = val;
-          this.qIndex = 0;
-          this.goToNextQuestionOrSubmit();
+          this.nextQuestionOrSubmit(0);
         }
       ));
       return;
@@ -788,9 +930,11 @@ const quarterlyFlow = {
       const q = this.questions[idx];
       const wrap = document.createElement("div");
       wrap.className = "stack";
+      wrap.style.gap = "18px";
+
       const h = document.createElement("h2");
       h.className = "question-title";
-      h.textContent = `Anything changed on: "${q.question}"?`;
+      h.textContent = `Anything changed on: “${q.question}”?`;
       wrap.appendChild(h);
 
       const textarea = document.createElement("textarea");
@@ -810,20 +954,17 @@ const quarterlyFlow = {
         list.appendChild(btn);
       };
 
-      addBtn("Still open — save note & continue", "btn btn-primary btn-block", async () => {
+      addBtn("Still open — continue", "btn btn-primary btn-block", async () => {
         await this.patchQuestion(q.id, { append_note: textarea.value.trim() || undefined });
-        this.qIndex = idx + 1;
-        this.goToNextQuestionOrSubmit();
+        this.nextQuestionOrSubmit(idx + 1);
       });
       addBtn("Mark answered", "btn btn-option", async () => {
         await this.patchQuestion(q.id, { status: "answered", append_note: textarea.value.trim() || undefined });
-        this.qIndex = idx + 1;
-        this.goToNextQuestionOrSubmit();
+        this.nextQuestionOrSubmit(idx + 1);
       });
       addBtn("Drop it", "btn btn-option", async () => {
         await this.patchQuestion(q.id, { status: "dropped", append_note: textarea.value.trim() || undefined });
-        this.qIndex = idx + 1;
-        this.goToNextQuestionOrSubmit();
+        this.nextQuestionOrSubmit(idx + 1);
       });
 
       root.appendChild(wrap);
@@ -835,9 +976,9 @@ const quarterlyFlow = {
     try { await api(`/questions/${id}`, { method: "PATCH", body }); } catch (_) { /* best-effort */ }
   },
 
-  goToNextQuestionOrSubmit() {
-    if (this.qIndex < this.questions.length) {
-      this.go(`pq:${this.qIndex}`);
+  nextQuestionOrSubmit(idx) {
+    if (idx < this.questions.length) {
+      this.goStep(`pq:${idx}`);
     } else {
       this.submit();
     }
@@ -849,16 +990,27 @@ const quarterlyFlow = {
     try {
       await api("/reviews/quarterly", {
         method: "POST",
-        body: { answers: { job_carrying_foundation: this.answers.job, cycles_this_quarter: this.answers.cycles } },
+        body: {
+          answers: {
+            job_carrying_foundation: this.answers.job,
+            cycles_this_quarter: this.answers.cycles,
+          },
+        },
       });
       toast("Quarterly review saved.");
-      await refreshStatus();
-      showScreen("status");
+      activeReviewFlow = null;
+      go("/");
     } catch (err) {
-      root.innerHTML = `<p class="error-text">${escapeHtml(err.message)}</p>`;
+      root.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "error-text";
+      p.textContent = err.message;
+      root.appendChild(p);
     }
   },
 };
+
+// ---------- service worker ----------
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
