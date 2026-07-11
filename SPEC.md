@@ -34,6 +34,7 @@ This document is the handoff spec for Claude Code. Build exactly this scope; res
 ```
 
 - **Deployment target: Railway.** One Railway project with two services: the app (built from this repo via Dockerfile) and a Railway PostgreSQL database. Use Railway-provided env vars (`DATABASE_URL`, `PORT`). Claude Code should use the Railway CLI/MCP integration to provision and deploy where available.
+- **Railway template / one-click deploy.** The public repo doubles as a Railway template: app service + PostgreSQL, env vars declared with descriptions, healthcheck on `/health`, migrations on boot. The README carries a "Deploy on Railway" button at the top and explains — written for a non-Railway-user — what happens on deploy and that `CYCLE_PASSWORD` is the only variable they must set.
 - **Database: PostgreSQL** (Railway add-on). Use a lightweight query layer or minimal ORM with migrations that run automatically on startup. No SQLite — app instances must be stateless (no reliance on local disk) so redeploys never lose data.
 - **Backend**: small HTTP service, JSON REST API. The same process serves the built web UI as static files (one service to deploy). Reads `PORT` from env (Railway convention), falls back to 4715 locally.
 - **Language/stack**: pick a mainstream stack that deploys cleanly on Railway via Dockerfile (Go, Node/TypeScript, or Python/FastAPI — Claude Code's choice, optimized for maintainability and a small image).
@@ -218,5 +219,14 @@ Design: calm and minimal. No dashboard aesthetics, no charts, no stats page. The
 - Attempting to complete without artifact/brain-dump, or to create a second active cycle, fails with a clear error.
 - Web UI installs as a PWA on iOS, shows status, runs the weekly review end-to-end on a phone screen.
 - Deployed and reachable on Railway (app service + Postgres), with migrations running automatically and `/health` green.
-- `docker compose up` runs the identical stack locally.
+- `docker compose up` runs the identical stack locally — verified from a fresh clone.
 - README exists (setup, Railway deploy steps, local dev) and the repo is public-ready (the project must follow its own rule: it ships shown).
+
+### Public release (closing cycle 1)
+
+The repo must be safe and presentable to flip public and link in a blog post:
+
+- **Repo hygiene**: no secret (passwords, tokens, `DATABASE_URL` values, `.env` files) in the working tree *or anywhere in git history* — verified by an explicit sweep before release. `.gitignore` covers env files, build artifacts and editor cruft. `.env.example` documents every required env var (`CYCLE_PASSWORD`, `DATABASE_URL`, `PORT`) with placeholder values. MIT `LICENSE` in the repo root.
+- **Screenshots**: outdated images are deleted; current shots live in `docs/screenshots/` and are referenced from the README. Captured from the real app with plausible but generic seeded demo data (no real personal info), at iPhone viewport (390×844), light mode — dark mode shots only where the UI supports it (it does, via `prefers-color-scheme`).
+- **README structure**: what it is (one paragraph, for process people, no jargon) → screenshots → Deploy on Railway → philosophy summary (cycles not tasks, shown not forgotten, parked not suppressed) → local dev setup → API note (OpenAPI file) → license. Tone: personal project, honest, no marketing language.
+- **SPEC.md stays in the repo** as the design doc and reflects every applied amendment (living `target_weeks`, cycle timeline, idea backlog, this section) — the spec matches the shipped code.

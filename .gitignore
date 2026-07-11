@@ -1,4 +1,22 @@
-/bin/
-*.exe
+# env files — .env.example is the documented template and stays tracked
 .env
+.env.*
+!.env.example
+
+# build artifacts
+/bin/
+/server
+*.exe
+*.test
+coverage.out
+
+# local tooling / curl session files
+cookies.txt
+node_modules/
+
+# editor / OS cruft
 .DS_Store
+.idea/
+.vscode/
+*.swp
+*~
