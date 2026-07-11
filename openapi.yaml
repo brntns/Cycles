@@ -5,7 +5,7 @@ info:
     Single-user planning API for process people. The core object is a
     project cycle, not a todo list. All state transitions are enforced
     server-side. See SPEC.md in the repository for the full product spec.
-  version: "1.0.0"
+  version: "1.1.0"
 servers:
   - url: /
 security:
@@ -147,10 +147,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
 
-  /cycles/{id}/notes:
+  /cycles/{id}/entries:
     post:
       tags: [cycles]
-      summary: Add a progress note to a cycle
+      summary: Add an update to a cycle's timeline
+      description: >
+        Creates a kind=update entry only. System entries (cycle created,
+        state transitions, estimate changes, completion/burial) and review
+        entries are generated server-side and can never be written directly.
       parameters:
         - $ref: "#/components/parameters/CycleId"
       requestBody:
@@ -169,37 +173,35 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CycleNote"
+                $ref: "#/components/schemas/TimelineEntry"
         "404":
           $ref: "#/components/responses/Error"
     get:
       tags: [cycles]
-      summary: List a cycle's notes, newest first
+      summary: The cycle's full timeline (all kinds), newest first
+      description: >
+        Review entries come back with their WeeklyReview hydrated under
+        `review`, so the UI can render the richer inline card without
+        extra requests.
       parameters:
         - $ref: "#/components/parameters/CycleId"
-        - name: since
-          in: query
-          description: Only notes created on or after this date
-          schema:
-            type: string
-            format: date
       responses:
         "200":
-          description: List of notes
+          description: List of timeline entries
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/CycleNote"
+                  $ref: "#/components/schemas/TimelineEntry"
 
-  /cycles/{id}/notes/{noteId}:
+  /cycles/{id}/entries/{entryId}:
     delete:
       tags: [cycles]
-      summary: Delete a progress note
+      summary: Delete a timeline update (kind=update only)
       parameters:
         - $ref: "#/components/parameters/CycleId"
-        - name: noteId
+        - name: entryId
           in: path
           required: true
           schema:
@@ -210,6 +212,12 @@ paths:
           description: Deleted
         "404":
           $ref: "#/components/responses/Error"
+        "422":
+          description: Entry is a system or review entry and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
 
   /reviews/weekly:
     post:
@@ -573,13 +581,30 @@ components:
           description: A living estimate, not a commitment — editable anytime while active.
         show_plan: { type: string }
 
-    CycleNote:
+    TimelineEntryKind:
+      type: string
+      enum: [update, system, review]
+
+    TimelineEntry:
       type: object
       properties:
         id: { type: string, format: uuid }
         cycle_id: { type: string, format: uuid }
         created_at: { type: string, format: date-time }
-        text: { type: string }
+        kind: { $ref: "#/components/schemas/TimelineEntryKind" }
+        text:
+          type: string
+          description: User prose for update entries; generated text for system entries.
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: For review entries, the id of the linked WeeklyReview.
+        review:
+          allOf:
+            - $ref: "#/components/schemas/WeeklyReview"
+          nullable: true
+          description: Hydrated on reads for kind=review entries.
 
     CyclePatch:
       type: object

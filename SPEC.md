@@ -73,15 +73,26 @@ building ──► understanding ──► showing ──► completed
 - Transition to `buried` requires `brain_dump` ("what I learned, why I'm stopping").
 - While a cycle is active, `intent`, `show_plan` and `target_weeks` remain editable via PATCH — extending or shortening the estimate is normal usage, not an exception.
 
-### CycleNote (progress notes / Zwischenstände)
+### TimelineEntry (the cycle timeline)
+
+Every cycle has a timeline: prose updates, quiet system events and weekly reviews in one chronological stream. The timeline **is** the documentation raw material — updates are **distributed brain-dumping** (prose, not checkboxes), never task items.
+
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid | |
 | cycle_id | uuid | FK to Cycle |
 | created_at | timestamp | |
-| text | text | prose, not checkboxes — notes are **distributed brain-dumping**, never task items |
+| kind | enum | `update`, `system`, `review` |
+| text | text | prose for `update`; `system` entries get generated text |
+| ref_id | uuid nullable | links `review` entries to their WeeklyReview |
 
-When a cycle transitions to `completed` or `buried`, the brain-dump screen shows all of the cycle's notes alongside the input as source material.
+- **`update`** — user-written prose; the only kind the user creates or deletes. (The former CycleNotes; existing rows were migrated to `kind=update`.)
+- **`system`** — auto-generated, never user-written: cycle created, state transition, `target_weeks` changed, cycle completed/buried. Small, quiet rendering.
+- **`review`** — created automatically when a weekly review is submitted for the cycle; rendered as a richer card inline in the timeline.
+
+Days without entries are invisible, not failures: **no gap indicators, no streaks, no reminders** — feeding the timeline is always optional.
+
+When a cycle transitions to `completed` or `buried`, the brain-dump screen shows the full timeline alongside the input as source material. Completed and buried cycles keep their full timeline, read-only — each past cycle is a browsable story.
 
 ### WeeklyReview
 | Field | Type | Notes |
@@ -129,7 +140,7 @@ The single-active-cycle rule creates pressure with no outlet. When a new idea st
 2. "Is the cycle still alive?" (yes / dying / dead) — "dying/dead" offers the bury flow (brain-dump prompt)
 3. "What state is the cycle in?" (offer valid transitions only)
 3b. Only if NO active cycle exists at this point (none existed, or it was just buried/completed): show open ideas as candidates — "Start one of these?" — skippable. Picking one promotes it into the next cycle.
-4. "What is the ONE next step for this week?" (free text — exactly one; the notes added since the last review are shown above the question as context)
+4. "What is the ONE next step for this week?" (free text — exactly one; the timeline updates added since the last review are shown above the question as context)
 5. "What will Friday's show-slot produce?" (free text, "nothing" is a valid answer)
 Persist as a WeeklyReview. Show a small "streak" of consecutive weekly reviews (subtle, not gamified — no badges, no confetti).
 
@@ -152,9 +163,10 @@ GET    /cycles                     → list, filterable by state
 GET    /cycles/{id}
 PATCH  /cycles/{id}                → edit fields / transition state (validates state machine);
                                      intent, show_plan, target_weeks stay editable on an active cycle
-POST   /cycles/{id}/notes          → add a progress note
-GET    /cycles/{id}/notes          → list notes, newest first (optional ?since=YYYY-MM-DD)
-DELETE /cycles/{id}/notes/{noteId}
+POST   /cycles/{id}/entries        → add a timeline update (kind=update only —
+                                     system and review entries are generated server-side)
+GET    /cycles/{id}/entries        → the full timeline, all kinds, newest first
+DELETE /cycles/{id}/entries/{entryId}  (kind=update only)
 POST   /reviews/weekly             → submit a completed weekly review
 GET    /reviews/weekly?limit=N
 POST   /reviews/quarterly
@@ -179,9 +191,9 @@ All responses JSON. Errors: `{ "error": "...", "detail": "..." }` with proper st
 
 Four screens only, mobile-first:
 
-1. **Status view** (default): active cycle title, state (as a simple 4-step indicator), "week N of ~M" (the tilde signals the estimate), this week's `next_step` and `friday_show`. One-tap "+1 week" / "-1 week" adjusts the estimate in place — no warnings, no guilt UI. An edit affordance opens `intent`, `show_plan` and `target_weeks` for editing. A one-tap "Add note" opens a single text field (save, done — usable in <10 seconds on a phone); the cycle's notes are listed newest first. If a review is due: a single clear "Start Sunday review" button. If NO active cycle exists, open ideas are offered as candidates ("Pick your next cycle") — promoting opens cycle creation prefilled with title + note-as-intent. Large type, generous spacing, thumb-reachable actions.
-2. **Review flow**: the guided questions, one per screen, big text input / big option buttons, forward-only with a back button. The brain-dump screen (bury/complete) shows all of the cycle's notes alongside the input. On finish: return to status view.
-3. **History view**: past cycles (completed and buried) with their brain-dumps, artifact links and progress notes — the visible proof that nothing evaporates anymore. Read-only list, newest first.
+1. **Status view** (default): the cycle view is a **vertical timeline, newest first**. On top a header card: cycle title, state (as a simple 4-step indicator), "week N of ~M" (the tilde signals the estimate; one-tap "+1 week" / "-1 week" adjusts it in place — no warnings, no guilt UI), the text of the **latest update rendered prominently as "current state"**, and one primary **"+ Update"** action (single text field, save — usable in <10 seconds on a phone). An edit affordance opens `intent`, `show_plan` and `target_weeks` for editing. Below, the timeline: updates as full dots with their text; system entries as small muted dots, one line; weekly reviews as richer cards inline (cycle alive?, next step, friday show). Entries are grouped chronologically with date labels — days without entries are invisible, no gap indicators. If a review is due: a single clear "Start Sunday review" button. If NO active cycle exists, open ideas are offered as candidates ("Pick your next cycle") — promoting opens cycle creation prefilled with title + note-as-intent. Large type, generous spacing, thumb-reachable actions.
+2. **Review flow**: the guided questions, one per screen, big text input / big option buttons, forward-only with a back button. The brain-dump screen (bury/complete) shows the full timeline alongside the input — the timeline is the documentation raw material. On finish: return to status view.
+3. **History view**: past cycles (completed and buried) with their brain-dumps, artifact links and full read-only timelines — each past cycle a browsable story, the visible proof that nothing evaporates anymore. Read-only list, newest first.
 4. **Backlog view**: plain list of open ideas, newest first; tap to discard, with undo. Nothing else — no tags, no priorities, no sorting.
 
 Global **quick-capture**: a "+" affordance reachable from the status view opens a title field plus optional note; save, done. Must work in **<5 seconds on a phone** — this is the most important interaction of the backlog feature. Deciding what to do with an idea happens only at cycle boundaries or during reviews, never at capture time.

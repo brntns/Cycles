@@ -45,13 +45,36 @@ func (s *Store) CreateWeekly(ctx context.Context, in WeeklyInput) (*model.Weekly
 		in.Answers = json.RawMessage(`{}`)
 	}
 
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, `
 		INSERT INTO weekly_reviews (date, cycle_id, answers, next_step, friday_show)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, date, cycle_id, answers, next_step, friday_show, created_at
 	`, in.Date, in.CycleID, in.Answers, in.NextStep, in.FridayShow)
 
-	return scanWeekly(row)
+	wr, err := scanWeekly(row)
+	if err != nil {
+		return nil, err
+	}
+	// A review of a cycle becomes part of that cycle's timeline, rendered
+	// as a richer card inline (kind=review, ref_id → the review).
+	if wr.CycleID != nil {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO timeline_entries (cycle_id, kind, text, ref_id)
+			VALUES ($1, 'review', 'Weekly review', $2)
+		`, *wr.CycleID, wr.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return wr, nil
 }
 
 func (s *Store) ListWeekly(ctx context.Context, limit int) ([]*model.WeeklyReview, error) {

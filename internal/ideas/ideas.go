@@ -197,6 +197,13 @@ func (s *Store) Promote(ctx context.Context, id string, in PromoteInput) (*model
 		return nil, nil, err
 	}
 
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO timeline_entries (cycle_id, kind, text)
+		VALUES ($1, 'system', 'Cycle created')
+	`, cycle.ID); err != nil {
+		return nil, nil, err
+	}
+
 	ideaRow := tx.QueryRow(ctx, `
 		UPDATE ideas SET status = 'promoted', promoted_cycle_id = $1 WHERE id = $2
 		RETURNING id, title, note, created_at, status, promoted_cycle_id

@@ -43,11 +43,26 @@ type Cycle struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-type CycleNote struct {
-	ID        string    `json:"id"`
-	CycleID   string    `json:"cycle_id"`
-	CreatedAt time.Time `json:"created_at"`
-	Text      string    `json:"text"`
+type TimelineEntryKind string
+
+const (
+	EntryUpdate TimelineEntryKind = "update"
+	EntrySystem TimelineEntryKind = "system"
+	EntryReview TimelineEntryKind = "review"
+)
+
+// TimelineEntry is one item in a cycle's timeline: a user-written update,
+// an auto-generated system event, or a pointer to a weekly review.
+type TimelineEntry struct {
+	ID        string            `json:"id"`
+	CycleID   string            `json:"cycle_id"`
+	CreatedAt time.Time         `json:"created_at"`
+	Kind      TimelineEntryKind `json:"kind"`
+	Text      string            `json:"text"`
+	RefID     *string           `json:"ref_id"`
+	// Review is hydrated on reads for kind=review entries so the UI can
+	// render the richer inline card without extra requests.
+	Review *WeeklyReview `json:"review,omitempty"`
 }
 
 type IdeaStatus string

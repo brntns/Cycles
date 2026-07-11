@@ -20,13 +20,19 @@ deployment.
 - **Shown, or buried — never vanished.** Completing requires a public
   artifact URL and a brain-dump; abandoning ("burying") requires a
   brain-dump too. The history view keeps all of it.
-- **Progress notes.** One-tap notes on the active cycle act as
-  distributed brain-dumping; they resurface as source material when the
-  cycle ends and as context during the weekly review.
+- **The cycle timeline.** The cycle view is a vertical timeline, newest
+  first: prose updates (one primary "+ Update" action, a single text
+  field), quiet auto-generated system entries (created, state moves,
+  estimate changes, completed/buried) and weekly reviews as richer
+  inline cards. The latest update is rendered prominently as the
+  cycle's *current state*. Days without entries are invisible — no gap
+  indicators, no streaks, no reminders. The full timeline resurfaces as
+  source material on the brain-dump screen when the cycle ends, and
+  past cycles keep theirs read-only: each one a browsable story.
 - **Guided Sunday review.** Always the same short question sequence,
-  one question per screen. *This week's next step* and the *Friday
-  show-slot* on the status view are the answers from the latest review —
-  the ritual is the only place they get written.
+  one question per screen. Each submitted review lands in the cycle's
+  timeline as a card carrying *this week's next step* and the *Friday
+  show-slot* — the ritual is the only place they get written.
 - **Idea backlog.** A "+" captures an idea in seconds so it can stop
   occupying your head. Deciding happens only at cycle boundaries: when
   no cycle is active, open ideas are offered as candidates and promote
@@ -80,6 +86,8 @@ BASE=http://localhost:4715
 curl -c cookies.txt -X POST $BASE/auth/login -d '{"password":"changeme"}'
 curl -b cookies.txt -X POST $BASE/cycles -d '{"title":"Learn Rust","target_weeks":6}'
 curl -b cookies.txt $BASE/status
+curl -b cookies.txt -X POST $BASE/cycles/<cycle-id>/entries -d '{"text":"Chapter 4 done, ownership finally clicks"}'
+curl -b cookies.txt $BASE/cycles/<cycle-id>/entries   # the full timeline, newest first
 ```
 
 Full endpoint list: [`openapi.yaml`](./openapi.yaml).
@@ -139,7 +147,7 @@ internal/db/          Postgres connection pool
 internal/dbmig/        embedded SQL migrations, applied automatically on startup
 internal/model/        shared domain types
 internal/auth/         single-user auth, Postgres-backed sessions, login rate limiting
-internal/cyclesvc/      Cycle CRUD + state machine
+internal/cyclesvc/      Cycle CRUD, state machine + cycle timeline
 internal/reviews/       weekly/quarterly review persistence, due/streak logic
 internal/questions/     parked "big life questions"
 internal/ideas/         idea backlog (capture bin) + promote-to-cycle

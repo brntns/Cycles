@@ -441,58 +441,137 @@ button:focus-visible, a:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-/* ---------- notes ---------- */
+/* ---------- current state + timeline ---------- */
 
-.notes {
+.current-state {
   margin-top: 20px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
-.notes-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.notes-add {
-  margin-left: 0;
-  min-height: 32px;
-  padding: 4px 8px;
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.note-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.note-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.note-text {
-  margin: 0;
-  font-size: 14px;
+.current-state-text {
+  margin: 2px 0 0;
+  font-size: 17px;
   line-height: 1.5;
   white-space: pre-wrap;
 }
 
-.note-meta {
+.current-state-text.is-empty {
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.update-actions { margin-top: 16px; }
+
+.timeline {
+  position: relative;
+  padding-left: 24px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.tl-date {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  margin: 14px 0 2px;
+}
+
+.timeline > .tl-date:first-child { margin-top: 2px; }
+
+.tl-entry {
+  position: relative;
+  padding: 6px 0;
+}
+
+.tl-entry::before {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+}
+
+/* Updates: full dots with text. */
+.tl-update::before {
+  left: -22px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+}
+
+.tl-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tl-text {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* System entries: small muted dots, one quiet line. */
+.tl-system { padding: 3px 0; }
+
+.tl-system::before {
+  left: -19px;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  background: var(--ink-soft);
+  opacity: 0.55;
+}
+
+.tl-system-text {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Weekly reviews: richer cards inline in the timeline. */
+.tl-review::before {
+  left: -22px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  background: var(--bg);
+  border: 2.5px solid var(--accent);
+}
+
+.tl-review-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
+
+.tl-review-alive {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.notes-context .timeline { padding-left: 20px; }
 
 .note-date {
   font-size: 12px;

@@ -401,7 +401,7 @@ func (s *Server) handlePatchQuestion(w http.ResponseWriter, r *http.Request) {
 type exportPayload struct {
 	ExportedAt       time.Time                `json:"exported_at"`
 	Cycles           []*model.Cycle           `json:"cycles"`
-	CycleNotes       []*model.CycleNote       `json:"cycle_notes"`
+	TimelineEntries  []*model.TimelineEntry   `json:"timeline_entries"`
 	Ideas            []*model.Idea            `json:"ideas"`
 	WeeklyReviews    []*model.WeeklyReview    `json:"weekly_reviews"`
 	QuarterlyReviews []*model.QuarterlyReview `json:"quarterly_reviews"`
@@ -416,7 +416,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	allNotes, err := s.cycles.ListAllNotes(ctx)
+	allEntries, err := s.cycles.ListAllEntries(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
@@ -445,7 +445,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, exportPayload{
 		ExportedAt:       time.Now().UTC(),
 		Cycles:           allCycles,
-		CycleNotes:       allNotes,
+		TimelineEntries:  allEntries,
 		Ideas:            allIdeas,
 		WeeklyReviews:    allWeekly,
 		QuarterlyReviews: allQuarterly,

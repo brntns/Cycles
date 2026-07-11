@@ -59,7 +59,13 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (*model.Cycle, error
 		return nil, fmt.Errorf("title is required")
 	}
 
-	row := s.pool.QueryRow(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, `
 		INSERT INTO cycles (title, intent, state, target_weeks, show_plan)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, title, intent, state, started_at, target_weeks, show_plan,
@@ -71,6 +77,12 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (*model.Cycle, error
 		if isUniqueViolation(err) {
 			return nil, ErrActiveCycleExists
 		}
+		return nil, err
+	}
+	if err := addSystemEntry(ctx, tx, c.ID, "Cycle created"); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -226,9 +238,32 @@ func (s *Store) Patch(ctx context.Context, id string, in PatchInput) (*model.Cyc
 		showPlan = *in.ShowPlan
 	}
 
+	// System entries for the timeline: estimate first, then the state
+	// change, so a terminal event ends up newest.
+	var systemTexts []string
+	if targetWeeks != current.TargetWeeks {
+		systemTexts = append(systemTexts, "Estimate changed to ~"+weeksLabel(targetWeeks))
+	}
+	if newState != current.State {
+		switch newState {
+		case model.StateCompleted:
+			systemTexts = append(systemTexts, "Cycle completed")
+		case model.StateBuried:
+			systemTexts = append(systemTexts, "Cycle buried")
+		default:
+			systemTexts = append(systemTexts, "Moved to "+string(newState))
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	var row pgx.Row
 	if endedAtSet {
-		row = s.pool.QueryRow(ctx, `
+		row = tx.QueryRow(ctx, `
 			UPDATE cycles SET title=$1, intent=$2, state=$3, target_weeks=$4, show_plan=$5,
 			       artifact_url=$6, brain_dump=$7, ended_at=$8, updated_at=now()
 			WHERE id=$9
@@ -236,7 +271,7 @@ func (s *Store) Patch(ctx context.Context, id string, in PatchInput) (*model.Cyc
 			          artifact_url, brain_dump, ended_at, created_at, updated_at
 		`, title, intent, newState, targetWeeks, showPlan, artifactURL, brainDump, endedAt, id)
 	} else {
-		row = s.pool.QueryRow(ctx, `
+		row = tx.QueryRow(ctx, `
 			UPDATE cycles SET title=$1, intent=$2, state=$3, target_weeks=$4, show_plan=$5,
 			       artifact_url=$6, brain_dump=$7, updated_at=now()
 			WHERE id=$8
@@ -245,7 +280,26 @@ func (s *Store) Patch(ctx context.Context, id string, in PatchInput) (*model.Cyc
 		`, title, intent, newState, targetWeeks, showPlan, artifactURL, brainDump, id)
 	}
 
-	return scanCycle(row)
+	c, err := scanCycle(row)
+	if err != nil {
+		return nil, err
+	}
+	for _, text := range systemTexts {
+		if err := addSystemEntry(ctx, tx, id, text); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func weeksLabel(n int) string {
+	if n == 1 {
+		return "1 week"
+	}
+	return fmt.Sprintf("%d weeks", n)
 }
 
 // scanner is satisfied by both pgx.Row and pgx.Rows.
