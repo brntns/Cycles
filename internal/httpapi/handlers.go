@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"time"
 
-	"cycles/internal/cyclesvc"
-	"cycles/internal/model"
-	"cycles/internal/questions"
-	"cycles/internal/reviews"
+	"varde/internal/cyclesvc"
+	"varde/internal/model"
+	"varde/internal/questions"
+	"varde/internal/reviews"
 )
 
 // --- auth ---

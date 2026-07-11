@@ -1,3 +1,5 @@
+name: varde
+
 services:
   app:
     build: .
@@ -5,7 +7,7 @@ services:
       - "4715:4715"
     environment:
       DATABASE_URL: postgres://cycles:cycles@db:5432/cycles?sslmode=disable
-      CYCLE_PASSWORD: ${CYCLE_PASSWORD:-changeme}
+      VARDE_PASSWORD: ${VARDE_PASSWORD:-changeme}
       COOKIE_SECURE: "false"
       PORT: "4715"
     depends_on:
@@ -19,7 +21,7 @@ services:
       POSTGRES_PASSWORD: cycles
       POSTGRES_DB: cycles
     volumes:
-      - cycles_pgdata:/var/lib/postgresql/data
+      - varde_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cycles"]
       interval: 5s
@@ -27,4 +29,4 @@ services:
       retries: 10
 
 volumes:
-  cycles_pgdata:
+  varde_pgdata:

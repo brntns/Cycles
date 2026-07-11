@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"cycles/internal/model"
+	"varde/internal/model"
 )
 
 var (

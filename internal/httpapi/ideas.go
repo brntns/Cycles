@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"cycles/internal/ideas"
-	"cycles/internal/model"
+	"varde/internal/ideas"
+	"varde/internal/model"
 )
 
 type createIdeaRequest struct {

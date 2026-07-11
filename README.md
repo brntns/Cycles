@@ -1,6 +1,6 @@
-# Cycle Companion
+# Varde
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/XlS7kq?utm_medium=integration&utm_source=button&utm_campaign=cycle-companion)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/XlS7kq?utm_medium=integration&utm_source=button&utm_campaign=varde)
 
 A planning tool for people whose fulfillment comes from the process of
 building and understanding, not from finished things. Instead of a todo
@@ -10,6 +10,11 @@ either *shown* (a public artifact exists) or deliberately *buried* (with
 a short note on what was learned). I built it for myself because every
 task manager I tried turned my projects into guilt. This one is a quiet
 companion, not a dashboard.
+
+A *varde* is Norwegian for a stone cairn used as a trail marker — chains
+of varder guided travellers across mountains and coastlines, and every
+finished cycle here leaves one behind: the history view is a chain of
+them.
 
 This is a personal project. It's single-user by design, the scope is
 deliberately small, and the [SPEC.md](./SPEC.md) it was built from lives
@@ -37,7 +42,7 @@ you don't need to know Railway to use it. What happens when you click it:
 1. Railway creates a project with two services: **the app** (built from
    this repo's Dockerfile) and a **PostgreSQL database**. The database
    connection (`DATABASE_URL`) is wired up automatically.
-2. You'll be asked for one variable: **`CYCLE_PASSWORD`** — the password
+2. You'll be asked for one variable: **`VARDE_PASSWORD`** — the password
    you'll log in with. Pick something real; this is the entire auth of a
    single-user app.
 3. The app starts, runs its database migrations automatically, and
@@ -59,12 +64,12 @@ railway login
 railway init                   # creates a new Railway project
 railway add --database postgres
 railway up                     # builds the Dockerfile and deploys
-railway variables --set CYCLE_PASSWORD=<a real password>
+railway variables --set VARDE_PASSWORD=<a real password>
 railway domain                 # generates a public URL
 ```
 
 Via the dashboard: New Project → Deploy from GitHub repo → add a
-PostgreSQL database to the same project → set `CYCLE_PASSWORD` on the
+PostgreSQL database to the same project → set `VARDE_PASSWORD` on the
 app service → deploy → generate a domain under Settings → Networking.
 `DATABASE_URL` is injected automatically once Postgres is attached;
 `railway.json` in this repo configures the `/health` healthcheck and
@@ -103,8 +108,8 @@ Requires Docker, or Go 1.22+ with a local Postgres.
 ### docker compose (closest to production)
 
 ```sh
-cp .env.example .env   # then edit CYCLE_PASSWORD
-CYCLE_PASSWORD=changeme docker compose up --build
+cp .env.example .env   # then edit VARDE_PASSWORD
+VARDE_PASSWORD=changeme docker compose up --build
 ```
 
 The app is at http://localhost:4715. Postgres runs in its own container
@@ -115,7 +120,7 @@ with a named volume; migrations run automatically on startup.
 ```sh
 createdb cycles
 export DATABASE_URL="postgres://<user>@localhost:5432/cycles?sslmode=disable"
-export CYCLE_PASSWORD=changeme
+export VARDE_PASSWORD=changeme
 export COOKIE_SECURE=false   # allow the session cookie over plain HTTP locally
 go run ./cmd/server
 ```
@@ -128,7 +133,7 @@ All of them are documented with placeholders in
 | Variable | Required | Notes |
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres connection string. Railway injects this automatically when a Postgres service is attached. |
-| `CYCLE_PASSWORD` | yes | The single-user login password. No default — the server refuses to start without it. |
+| `VARDE_PASSWORD` | yes | The single-user login password. No default — the server refuses to start without it. |
 | `PORT` | no | Defaults to `4715`. Railway injects this automatically. |
 | `COOKIE_SECURE` | no | Defaults to `true`. Set to `false` only for local HTTP development. |
 

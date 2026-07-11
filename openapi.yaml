@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Cycle Companion API
+  title: Varde API
   description: >
     Single-user planning API for process people. The core object is a
     project cycle, not a todo list. All state transitions are enforced

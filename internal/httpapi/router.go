@@ -1,5 +1,5 @@
 // Package httpapi wires the HTTP surface: routing, auth, and JSON
-// marshaling for the Cycle Companion REST API.
+// marshaling for the Varde REST API.
 package httpapi
 
 import (
@@ -8,11 +8,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"cycles/internal/auth"
-	"cycles/internal/cyclesvc"
-	"cycles/internal/ideas"
-	"cycles/internal/questions"
-	"cycles/internal/reviews"
+	"varde/internal/auth"
+	"varde/internal/cyclesvc"
+	"varde/internal/ideas"
+	"varde/internal/questions"
+	"varde/internal/reviews"
 )
 
 type Server struct {

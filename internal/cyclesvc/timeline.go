@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"cycles/internal/model"
+	"varde/internal/model"
 )
 
 var (

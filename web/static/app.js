@@ -66,12 +66,12 @@ async function api(path, opts = {}) {
 
 function saveStatusCache(status) {
   cachedStatus = status;
-  try { localStorage.setItem("cycles:lastStatus", JSON.stringify(status)); } catch (_) { /* ignore */ }
+  try { localStorage.setItem("varde:lastStatus", JSON.stringify(status)); } catch (_) { /* ignore */ }
 }
 
 function loadStatusCache() {
   try {
-    const raw = localStorage.getItem("cycles:lastStatus");
+    const raw = localStorage.getItem("varde:lastStatus");
     return raw ? JSON.parse(raw) : null;
   } catch (_) {
     return null;
@@ -231,7 +231,7 @@ async function onLogout() {
   try { await api("/auth/logout", { method: "POST" }); } catch (_) { /* ignore */ }
   authed = false;
   cachedStatus = null;
-  try { localStorage.removeItem("cycles:lastStatus"); } catch (_) { /* ignore */ }
+  try { localStorage.removeItem("varde:lastStatus"); } catch (_) { /* ignore */ }
   go("/login", true);
   route();
 }

@@ -1,4 +1,4 @@
-module cycles
+module varde
 
 go 1.26.5
 

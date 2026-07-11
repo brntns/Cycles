@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"cycles/internal/cyclesvc"
+	"varde/internal/cyclesvc"
 )
 
 type createEntryRequest struct {

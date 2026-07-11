@@ -1,4 +1,4 @@
-// Command server runs the Cycle Companion API and serves the built PWA as
+// Command server runs the Varde API and serves the built PWA as
 // static files from the same process.
 package main
 
@@ -14,12 +14,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"cycles/internal/auth"
-	"cycles/internal/config"
-	"cycles/internal/db"
-	"cycles/internal/dbmig"
-	"cycles/internal/httpapi"
-	"cycles/web"
+	"varde/internal/auth"
+	"varde/internal/config"
+	"varde/internal/db"
+	"varde/internal/dbmig"
+	"varde/internal/httpapi"
+	"varde/web"
 )
 
 func main() {
@@ -50,7 +50,7 @@ func run() error {
 		return err
 	}
 
-	authSvc := auth.NewService(pool, cfg.CyclePassword, cfg.CookieSecure, cfg.SessionMaxDays)
+	authSvc := auth.NewService(pool, cfg.Password, cfg.CookieSecure, cfg.SessionMaxDays)
 
 	staticFS, err := web.StaticFS()
 	if err != nil {
