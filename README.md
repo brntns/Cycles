@@ -2,7 +2,40 @@
 
 A planning tool for process people. The core object is a project cycle
 (~6–12 weeks), not a todo list. See [`SPEC.md`](./SPEC.md) for the full
-product spec — this README only covers setup and deployment.
+product spec — this README covers features at a glance, setup and
+deployment.
+
+## Features
+
+| Status view | Idea backlog |
+|:---:|:---:|
+| <img src="docs/screen-status.png" width="320" alt="Status view with an active cycle"> | <img src="docs/screen-ideas.png" width="320" alt="Idea backlog"> |
+
+- **One cycle at a time.** A cycle moves through four phases —
+  *building → understanding → showing → completed* — enforced by a
+  server-side state machine. The segmented bar shows the **phase**, not
+  elapsed time; "week N of ~M" below it is the time dimension, and the
+  tilde is deliberate: `target_weeks` is a living estimate you adjust
+  with one tap (−/+), not a commitment.
+- **Shown, or buried — never vanished.** Completing requires a public
+  artifact URL and a brain-dump; abandoning ("burying") requires a
+  brain-dump too. The history view keeps all of it.
+- **Progress notes.** One-tap notes on the active cycle act as
+  distributed brain-dumping; they resurface as source material when the
+  cycle ends and as context during the weekly review.
+- **Guided Sunday review.** Always the same short question sequence,
+  one question per screen. *This week's next step* and the *Friday
+  show-slot* on the status view are the answers from the latest review —
+  the ritual is the only place they get written.
+- **Idea backlog.** A "+" captures an idea in seconds so it can stop
+  occupying your head. Deciding happens only at cycle boundaries: when
+  no cycle is active, open ideas are offered as candidates and promote
+  into a prefilled new cycle. No tags, no priorities — deliberately.
+- **Quarterly review.** Unlocks every 12 weeks: big parked life
+  questions plus a keep/discard sweep over ideas older than 12 weeks.
+- **PWA + API-first.** Installable on iOS, offline shows the last-known
+  status; every feature works via the JSON API alone
+  ([`openapi.yaml`](./openapi.yaml)).
 
 ## Stack
 
