@@ -1,9 +1,6 @@
 # Cycle Companion
 
-<!-- TODO(template): after the repo is public and the Railway template is
-     created (see "Deploying your own" below), replace TEMPLATE_CODE with
-     the real code from `railway templates create`. -->
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/TEMPLATE_CODE?utm_medium=integration&utm_source=button&utm_campaign=cycle-companion)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/XlS7kq?utm_medium=integration&utm_source=button&utm_campaign=cycle-companion)
 
 A planning tool for people whose fulfillment comes from the process of
 building and understanding, not from finished things. Instead of a todo
