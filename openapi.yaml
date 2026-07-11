@@ -125,6 +125,12 @@ paths:
     patch:
       tags: [cycles]
       summary: Edit fields and/or transition state
+      description: >-
+        Transitions follow the state machine but are never time-gated:
+        `buried` is reachable at any moment from any non-terminal state
+        (requires brain_dump), and forward steps may happen at any pace —
+        a same-day walk building → understanding → showing → completed is
+        normal usage. `completed` requires artifact_url and brain_dump.
       parameters:
         - $ref: "#/components/parameters/CycleId"
       requestBody:

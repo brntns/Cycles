@@ -395,6 +395,14 @@ button:focus-visible, a:focus-visible {
   padding: 4px 8px;
 }
 
+/* Quiet exit affordance at the bottom of the active-cycle card: visible,
+   not alarming — ending a cycle is ordinary, not an emergency. */
+.end-cycle-btn {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 14px;
+}
+
 .state-caption-row {
   display: flex;
   align-items: center;

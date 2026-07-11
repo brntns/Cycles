@@ -2,7 +2,7 @@
 // always go to the network — writes require connectivity, and reads should
 // stay fresh; the app itself falls back to a locally stored last-known
 // /status when the network is unavailable.
-const CACHE_NAME = "varde-shell-v6";
+const CACHE_NAME = "varde-shell-v7";
 const SHELL_FILES = [
   "/",
   "/index.html",

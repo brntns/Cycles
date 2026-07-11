@@ -119,7 +119,7 @@ async function route() {
   }
 
   // Leaving the review screen resets any in-progress flow.
-  if (path !== "/review" && path !== "/quarterly" && activeReviewFlow) {
+  if (path !== "/review" && path !== "/quarterly" && path !== "/end" && activeReviewFlow) {
     activeReviewFlow = null;
   }
 
@@ -159,6 +159,12 @@ async function route() {
       showScreen("review");
       if (!activeReviewFlow || activeReviewFlow !== quarterlyFlow) {
         await quarterlyFlow.begin();
+      }
+      return;
+    case "/end":
+      showScreen("review");
+      if (!activeReviewFlow || activeReviewFlow !== endCycleFlow) {
+        await endCycleFlow.begin(cachedStatus ? cachedStatus.active_cycle : null);
       }
       return;
     default:
@@ -201,7 +207,9 @@ function wireStaticHandlers() {
     if (activeReviewFlow) activeReviewFlow.back();
   });
   el("review-cancel").addEventListener("click", () => {
-    if (confirm("Cancel this review? Nothing will be saved.")) {
+    const msg = (activeReviewFlow && activeReviewFlow.cancelMessage)
+      || "Cancel this review? Nothing will be saved.";
+    if (confirm(msg)) {
       activeReviewFlow = null;
       go("/");
     }
@@ -407,6 +415,14 @@ function buildActiveCycleCard(status, entries) {
     body.hidden = !editing;
     if (!editing) editForm.querySelector("textarea").focus();
   });
+
+  // The explicit exit: quiet, but always visible — ending a cycle is an
+  // ordinary act, never gated behind the Sunday review.
+  const endBtn = document.createElement("button");
+  endBtn.className = "link-btn end-cycle-btn";
+  endBtn.textContent = "End cycle…";
+  endBtn.addEventListener("click", () => go("/end"));
+  card.appendChild(endBtn);
 
   return card;
 }
@@ -1532,6 +1548,154 @@ const reviewFlow = {
         toast("Weekly review saved — new cycle started.");
       } else {
         toast("Weekly review saved.");
+      }
+      activeReviewFlow = null;
+      go("/");
+    } catch (err) {
+      root.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "error-text";
+      p.textContent = err.message;
+      root.appendChild(p);
+      const retry = document.createElement("button");
+      retry.className = "btn btn-block";
+      retry.textContent = "Back";
+      retry.addEventListener("click", () => this.render(this.path[this.path.length - 1]));
+      root.appendChild(retry);
+    }
+  },
+};
+
+// ---------- end-cycle flow ----------
+
+// The explicit exit from the status view. Both outcomes are ordinary and
+// healthy — the copy never asks "are you sure you want to give up?".
+// "It's done — show it" walks the state machine forward step by step (the
+// API allows any pace but no skipping); "Bury it" buries from any active
+// state. Either way the backend closes the timeline with a terminal
+// system entry.
+const endCycleFlow = {
+  cycle: null,
+  answers: {},
+  path: [],
+  entries: [],
+  cancelMessage: "Leave this for now? The cycle stays as it is.",
+
+  async begin(activeCycle) {
+    activeReviewFlow = this;
+    this.cycle = activeCycle || null;
+    this.answers = {};
+    this.path = [];
+    this.entries = [];
+    el("review-step-label").textContent = "End cycle";
+    if (!this.cycle) {
+      activeReviewFlow = null;
+      go("/", true);
+      return;
+    }
+    try { this.entries = await api(`/cycles/${this.cycle.id}/entries`) || []; } catch (_) { this.entries = []; }
+    this.goStep("choice");
+  },
+
+  back() {
+    if (this.path.length <= 1) {
+      activeReviewFlow = null;
+      go("/");
+      return;
+    }
+    this.path.pop();
+    this.render(this.path[this.path.length - 1]);
+  },
+
+  goStep(stepId) {
+    this.path.push(stepId);
+    this.render(stepId);
+  },
+
+  render(stepId) {
+    const root = el("review-content");
+    root.innerHTML = "";
+    window.scrollTo(0, 0);
+
+    if (stepId === "choice") {
+      root.appendChild(qOptions(
+        `End “${this.cycle.title}”?`,
+        "Either way, the cycle keeps its full story in history.",
+        [
+          { value: "complete", label: "It's done — show it" },
+          { value: "bury", label: "Bury it" },
+        ],
+        (val) => {
+          this.answers.choice = val;
+          this.goStep(val === "complete" ? "artifact_url" : "brain_dump");
+        }
+      ));
+      return;
+    }
+
+    if (stepId === "artifact_url") {
+      root.appendChild(qInput(
+        "Where can it be seen?",
+        "A link to the repo, post, or video — this is how the cycle gets shown.",
+        this.answers.artifactUrl,
+        (val) => {
+          this.answers.artifactUrl = val;
+          this.goStep("brain_dump");
+        }
+      ));
+      return;
+    }
+
+    if (stepId === "brain_dump") {
+      // The timeline is the distributed brain-dump — source material.
+      if (this.entries.length > 0) {
+        root.appendChild(buildTimelineContext("This cycle's timeline", this.entries));
+      }
+      const completing = this.answers.choice === "complete";
+      root.appendChild(qTextarea(
+        completing
+          ? "What did you learn along the way?"
+          : "What did you learn, and why are you stopping?",
+        completing
+          ? "The brain-dump that closes the cycle — the timeline above is your source material."
+          : "Saved as the brain-dump. Nothing evaporates.",
+        this.answers.brainDump,
+        (val) => {
+          this.answers.brainDump = val;
+          this.submit();
+        },
+        true
+      ));
+      return;
+    }
+  },
+
+  async submit() {
+    const root = el("review-content");
+    root.innerHTML = "<p class=\"offline-note\">Saving…</p>";
+    try {
+      if (this.answers.choice === "bury") {
+        await api(`/cycles/${this.cycle.id}`, {
+          method: "PATCH",
+          body: { state: "buried", brain_dump: this.answers.brainDump },
+        });
+        toast("Cycle buried — its story is kept in history.");
+      } else {
+        // Walk forward one legal step at a time; artifact and brain-dump
+        // ride on the final transition into completed.
+        const FORWARD = { building: "understanding", understanding: "showing", showing: "completed" };
+        let state = this.cycle.state;
+        while (state !== "completed") {
+          const next = FORWARD[state];
+          const patch = { state: next };
+          if (next === "completed") {
+            patch.artifact_url = this.answers.artifactUrl;
+            patch.brain_dump = this.answers.brainDump;
+          }
+          const updated = await api(`/cycles/${this.cycle.id}`, { method: "PATCH", body: patch });
+          state = updated.state;
+        }
+        toast("Cycle completed — it's in your history now.");
       }
       activeReviewFlow = null;
       go("/");
