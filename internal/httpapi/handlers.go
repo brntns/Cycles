@@ -402,6 +402,7 @@ type exportPayload struct {
 	ExportedAt       time.Time                `json:"exported_at"`
 	Cycles           []*model.Cycle           `json:"cycles"`
 	CycleNotes       []*model.CycleNote       `json:"cycle_notes"`
+	Ideas            []*model.Idea            `json:"ideas"`
 	WeeklyReviews    []*model.WeeklyReview    `json:"weekly_reviews"`
 	QuarterlyReviews []*model.QuarterlyReview `json:"quarterly_reviews"`
 	ParkedQuestions  []*model.ParkedQuestion  `json:"parked_questions"`
@@ -416,6 +417,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	allNotes, err := s.cycles.ListAllNotes(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	allIdeas, err := s.ideas.List(ctx, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
@@ -440,6 +446,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		ExportedAt:       time.Now().UTC(),
 		Cycles:           allCycles,
 		CycleNotes:       allNotes,
+		Ideas:            allIdeas,
 		WeeklyReviews:    allWeekly,
 		QuarterlyReviews: allQuarterly,
 		ParkedQuestions:  allQuestions,

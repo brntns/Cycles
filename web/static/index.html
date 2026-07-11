@@ -44,6 +44,7 @@
         <a class="brand" href="#/">Cycles</a>
         <nav class="topnav" aria-label="Navigation">
           <a href="#/" data-nav="/">Status</a>
+          <a href="#/ideas" data-nav="/ideas">Ideas</a>
           <a href="#/history" data-nav="/history">History</a>
         </nav>
         <button id="logout-btn" class="link-btn">Log out</button>
@@ -52,10 +53,18 @@
 
     <main id="shell-content" class="content"></main>
 
+    <button id="fab" class="fab" aria-label="Capture an idea">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </button>
+
     <nav class="tabbar" aria-label="Navigation">
       <a href="#/" data-nav="/">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>
         <span>Status</span>
+      </a>
+      <a href="#/ideas" data-nav="/ideas">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.55 1.1 1.35 1.1 2.2h5a2.9 2.9 0 0 1 1.1-2.2A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Ideas</span>
       </a>
       <a href="#/history" data-nav="/history">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/></svg>

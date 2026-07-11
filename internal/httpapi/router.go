@@ -10,6 +10,7 @@ import (
 
 	"cycles/internal/auth"
 	"cycles/internal/cyclesvc"
+	"cycles/internal/ideas"
 	"cycles/internal/questions"
 	"cycles/internal/reviews"
 )
@@ -20,6 +21,7 @@ type Server struct {
 	cycles    *cyclesvc.Store
 	reviews   *reviews.Store
 	questions *questions.Store
+	ideas     *ideas.Store
 	staticFS  fs.FS
 }
 
@@ -30,6 +32,7 @@ func NewServer(pool *pgxpool.Pool, authSvc *auth.Service, staticFS fs.FS) *Serve
 		cycles:    cyclesvc.NewStore(pool),
 		reviews:   reviews.NewStore(pool),
 		questions: questions.NewStore(pool),
+		ideas:     ideas.NewStore(pool),
 		staticFS:  staticFS,
 	}
 }
@@ -59,6 +62,10 @@ func (s *Server) Routes() http.Handler {
 	api.HandleFunc("GET /questions", s.handleListQuestions)
 	api.HandleFunc("POST /questions", s.handleCreateQuestion)
 	api.HandleFunc("PATCH /questions/{id}", s.handlePatchQuestion)
+	api.HandleFunc("POST /ideas", s.handleCreateIdea)
+	api.HandleFunc("GET /ideas", s.handleListIdeas)
+	api.HandleFunc("PATCH /ideas/{id}", s.handlePatchIdea)
+	api.HandleFunc("POST /ideas/{id}/promote", s.handlePromoteIdea)
 	api.HandleFunc("GET /export", s.handleExport)
 
 	mux.Handle("/auth/logout", s.authSvc.Middleware(api))
@@ -68,6 +75,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("/reviews/", s.authSvc.Middleware(api))
 	mux.Handle("/questions", s.authSvc.Middleware(api))
 	mux.Handle("/questions/", s.authSvc.Middleware(api))
+	mux.Handle("/ideas", s.authSvc.Middleware(api))
+	mux.Handle("/ideas/", s.authSvc.Middleware(api))
 	mux.Handle("/export", s.authSvc.Middleware(api))
 
 	// Static web UI (PWA shell) — everything not matched above.

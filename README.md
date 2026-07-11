@@ -109,6 +109,7 @@ internal/auth/         single-user auth, Postgres-backed sessions, login rate li
 internal/cyclesvc/      Cycle CRUD + state machine
 internal/reviews/       weekly/quarterly review persistence, due/streak logic
 internal/questions/     parked "big life questions"
+internal/ideas/         idea backlog (capture bin) + promote-to-cycle
 internal/httpapi/       HTTP routing, handlers, JSON responses
 web/                    go:embed wrapper around web/static
 web/static/             the PWA: index.html, app.js, style.css, manifest, service worker, icons

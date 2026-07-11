@@ -16,6 +16,7 @@ tags:
   - name: cycles
   - name: reviews
   - name: questions
+  - name: ideas
   - name: export
   - name: health
 
@@ -344,6 +345,119 @@ paths:
               schema:
                 $ref: "#/components/schemas/ParkedQuestion"
 
+  /ideas:
+    post:
+      tags: [ideas]
+      summary: Capture an idea into the backlog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                note:
+                  type: string
+                  description: One or two sentences max — no long specs.
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+    get:
+      tags: [ideas]
+      summary: List ideas, newest first
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/IdeaStatus"
+      responses:
+        "200":
+          description: List of ideas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Idea"
+
+  /ideas/{id}:
+    patch:
+      tags: [ideas]
+      summary: Edit title/note, or set status (open ⇄ discarded)
+      parameters:
+        - $ref: "#/components/parameters/IdeaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                note: { type: string }
+                status:
+                  type: string
+                  enum: [open, discarded]
+      responses:
+        "200":
+          description: Updated idea
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Idea"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /ideas/{id}/promote:
+    post:
+      tags: [ideas]
+      summary: Promote an open idea into the next cycle
+      description: >
+        Creates a new Cycle prefilled with the idea's title and
+        note-as-intent (the body may override), marks the idea promoted
+        and links promoted_cycle_id. Rejected while an active cycle exists.
+      parameters:
+        - $ref: "#/components/parameters/IdeaId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                intent: { type: string }
+                target_weeks: { type: integer, minimum: 1, maximum: 16 }
+                show_plan: { type: string }
+      responses:
+        "201":
+          description: Idea promoted, cycle created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  idea: { $ref: "#/components/schemas/Idea" }
+                  cycle: { $ref: "#/components/schemas/Cycle" }
+        "409":
+          description: An active cycle already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "422":
+          description: Idea is not open
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
   /export:
     get:
       tags: [export]
@@ -382,6 +496,13 @@ components:
       schema:
         type: string
         format: uuid
+    IdeaId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   responses:
     Error:
@@ -407,6 +528,20 @@ components:
     QuestionStatus:
       type: string
       enum: [parked, answered, dropped]
+
+    IdeaStatus:
+      type: string
+      enum: [open, promoted, discarded]
+
+    Idea:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        note: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/IdeaStatus" }
+        promoted_cycle_id: { type: string, format: uuid, nullable: true }
 
     Cycle:
       type: object

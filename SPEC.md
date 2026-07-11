@@ -102,6 +102,19 @@ When a cycle transitions to `completed` or `buried`, the brain-dump screen shows
 | status | enum | `parked`, `answered`, `dropped` |
 | notes | jsonb | array of {date, note} — appended at quarterly reviews only |
 
+### Idea (backlog — parked, not suppressed)
+
+The single-active-cycle rule creates pressure with no outlet. When a new idea strikes mid-cycle, it must be parkable in seconds so it can be let go of mentally — the same philosophy as ParkedQuestions. The backlog is a **capture bin, NOT a planning tool**: no tags, no priorities, no sorting options, no categories — deliberately. Capture anytime, **decide only at cycle boundaries or during reviews — never mid-cycle**. Ideas are cheap and disposable; discarding needs no brain-dump.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid | |
+| title | text | |
+| note | text nullable | one or two sentences max — no long specs |
+| created_at | timestamp | |
+| status | enum | `open`, `promoted`, `discarded` |
+| promoted_cycle_id | uuid nullable | set when the idea becomes a cycle |
+
 ### QuarterlyReview
 | Field | Type | Notes |
 |---|---|---|
@@ -115,6 +128,7 @@ When a cycle transitions to `completed` or `buried`, the brain-dump screen shows
 1. "How did the week go?" (free text, short)
 2. "Is the cycle still alive?" (yes / dying / dead) — "dying/dead" offers the bury flow (brain-dump prompt)
 3. "What state is the cycle in?" (offer valid transitions only)
+3b. Only if NO active cycle exists at this point (none existed, or it was just buried/completed): show open ideas as candidates — "Start one of these?" — skippable. Picking one promotes it into the next cycle.
 4. "What is the ONE next step for this week?" (free text — exactly one; the notes added since the last review are shown above the question as context)
 5. "What will Friday's show-slot produce?" (free text, "nothing" is a valid answer)
 Persist as a WeeklyReview. Show a small "streak" of consecutive weekly reviews (subtle, not gamified — no badges, no confetti).
@@ -123,6 +137,7 @@ Persist as a WeeklyReview. Show a small "streak" of consecutive weekly reviews (
 1. "Is the job still carrying the foundation?" (free text)
 2. "Did the cycles work this quarter?" (free text; show list of cycles completed/buried in the quarter)
 3. Then iterate over each `parked` ParkedQuestion: "Anything changed on: {question}?" — append a note, or mark answered/dropped.
+4. Then sweep the idea backlog: show open ideas older than 12 weeks with a one-tap keep/discard choice, so the backlog cannot silently rot into a guilt pile.
 
 ## API (v1)
 
@@ -147,6 +162,13 @@ GET    /reviews/quarterly
 GET    /questions                  → parked questions
 POST   /questions
 PATCH  /questions/{id}             → status change / append note
+POST   /ideas                      → create (title required, note optional)
+GET    /ideas                      → list, newest first, filterable by status (?status=open)
+PATCH  /ideas/{id}                 → edit title/note, or set status (open ⇄ discarded; undo = back to open)
+POST   /ideas/{id}/promote         → creates a new Cycle prefilled with title + note-as-intent
+                                     (optional body may override target_weeks/show_plan);
+                                     fails with a clear error if an active cycle exists;
+                                     sets status=promoted and links promoted_cycle_id
 GET    /export                     → full JSON dump (data freedom from day one)
 GET    /health                     → 200 + db connectivity check (for Railway healthcheck)
 ```
@@ -155,11 +177,14 @@ All responses JSON. Errors: `{ "error": "...", "detail": "..." }` with proper st
 
 ## Web UI (v1)
 
-Three screens only, mobile-first:
+Four screens only, mobile-first:
 
-1. **Status view** (default): active cycle title, state (as a simple 4-step indicator), "week N of ~M" (the tilde signals the estimate), this week's `next_step` and `friday_show`. One-tap "+1 week" / "-1 week" adjusts the estimate in place — no warnings, no guilt UI. An edit affordance opens `intent`, `show_plan` and `target_weeks` for editing. A one-tap "Add note" opens a single text field (save, done — usable in <10 seconds on a phone); the cycle's notes are listed newest first. If a review is due: a single clear "Start Sunday review" button. Large type, generous spacing, thumb-reachable actions.
+1. **Status view** (default): active cycle title, state (as a simple 4-step indicator), "week N of ~M" (the tilde signals the estimate), this week's `next_step` and `friday_show`. One-tap "+1 week" / "-1 week" adjusts the estimate in place — no warnings, no guilt UI. An edit affordance opens `intent`, `show_plan` and `target_weeks` for editing. A one-tap "Add note" opens a single text field (save, done — usable in <10 seconds on a phone); the cycle's notes are listed newest first. If a review is due: a single clear "Start Sunday review" button. If NO active cycle exists, open ideas are offered as candidates ("Pick your next cycle") — promoting opens cycle creation prefilled with title + note-as-intent. Large type, generous spacing, thumb-reachable actions.
 2. **Review flow**: the guided questions, one per screen, big text input / big option buttons, forward-only with a back button. The brain-dump screen (bury/complete) shows all of the cycle's notes alongside the input. On finish: return to status view.
 3. **History view**: past cycles (completed and buried) with their brain-dumps, artifact links and progress notes — the visible proof that nothing evaporates anymore. Read-only list, newest first.
+4. **Backlog view**: plain list of open ideas, newest first; tap to discard, with undo. Nothing else — no tags, no priorities, no sorting.
+
+Global **quick-capture**: a "+" affordance reachable from the status view opens a title field plus optional note; save, done. Must work in **<5 seconds on a phone** — this is the most important interaction of the backlog feature. Deciding what to do with an idea happens only at cycle boundaries or during reviews, never at capture time.
 
 PWA requirements: web app manifest (name, icons, standalone display), service worker with cache-first for the static shell (offline shows the last-known status; writes require connectivity — no offline sync in v1).
 

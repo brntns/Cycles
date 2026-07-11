@@ -27,6 +27,24 @@ function toast(msg) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
 }
 
+// Toast with a single action button (used for "Discard → Undo").
+function toastWithAction(msg, actionLabel, onAction) {
+  const t = el("toast");
+  t.textContent = msg + " ";
+  const btn = document.createElement("button");
+  btn.className = "toast-action";
+  btn.textContent = actionLabel;
+  btn.addEventListener("click", () => {
+    t.hidden = true;
+    clearTimeout(toastTimer);
+    onAction();
+  });
+  t.appendChild(btn);
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     method: opts.method || "GET",
@@ -112,12 +130,24 @@ async function route() {
     case "/":
       showScreen("shell");
       setNav("/");
+      el("fab").hidden = false;
       await renderStatusRoute();
       return;
     case "/history":
       showScreen("shell");
       setNav("/history");
+      el("fab").hidden = false;
       await renderHistoryRoute();
+      return;
+    case "/ideas":
+      showScreen("shell");
+      setNav("/ideas");
+      await renderIdeasRoute();
+      return;
+    case "/capture":
+      showScreen("shell");
+      setNav("");
+      renderCaptureRoute();
       return;
     case "/review":
       showScreen("review");
@@ -158,9 +188,15 @@ async function boot() {
   route();
 }
 
+let capturePrevPath = "/";
+
 function wireStaticHandlers() {
   el("login-form").addEventListener("submit", onLoginSubmit);
   el("logout-btn").addEventListener("click", onLogout);
+  el("fab").addEventListener("click", () => {
+    capturePrevPath = currentPath();
+    go("/capture");
+  });
   el("review-back").addEventListener("click", () => {
     if (activeReviewFlow) activeReviewFlow.back();
   });
@@ -212,11 +248,14 @@ async function renderStatusRoute() {
     const status = await api("/status");
     saveStatusCache(status);
     let notes = [];
+    let openIdeas = [];
     if (status.active_cycle) {
       try { notes = await api(`/cycles/${status.active_cycle.id}/notes`); } catch (_) { notes = []; }
+    } else {
+      try { openIdeas = await api("/ideas?status=open"); } catch (_) { openIdeas = []; }
     }
     cachedNotes = notes || [];
-    if (currentPath() === "/") paintStatus(root, status, false, cachedNotes);
+    if (currentPath() === "/") paintStatus(root, status, false, cachedNotes, openIdeas || []);
   } catch (err) {
     if (err.status === 401) {
       authed = false;
@@ -235,7 +274,7 @@ async function renderStatusRoute() {
   }
 }
 
-function paintStatus(root, status, offline, notes) {
+function paintStatus(root, status, offline, notes, openIdeas) {
   root.innerHTML = "";
 
   if (offline) {
@@ -264,7 +303,7 @@ function paintStatus(root, status, offline, notes) {
   if (status.active_cycle) {
     root.appendChild(buildActiveCycleCard(status, notes || []));
   } else {
-    root.appendChild(buildEmptyStateCard());
+    root.appendChild(buildEmptyStateCard(openIdeas || []));
   }
 
   const streak = document.createElement("p");
@@ -578,7 +617,7 @@ function weekOf(startedAt, targetWeeks) {
   return Math.min(week, targetWeeks + 4);
 }
 
-function buildEmptyStateCard() {
+function buildEmptyStateCard(openIdeas) {
   const card = document.createElement("div");
   card.className = "card empty-state";
 
@@ -592,41 +631,102 @@ function buildEmptyStateCard() {
   card.appendChild(h2);
 
   const p = document.createElement("p");
-  p.textContent = "Start one when you're ready to build or learn something.";
+  p.textContent = openIdeas.length > 0
+    ? "Pick your next cycle, or start something new."
+    : "Start one when you're ready to build or learn something.";
   card.appendChild(p);
 
-  const startBtn = document.createElement("button");
-  startBtn.className = "btn btn-primary";
-  startBtn.textContent = "Start a new cycle";
-  card.appendChild(startBtn);
+  const chooser = document.createElement("div");
+  chooser.className = "stack";
+  chooser.style.textAlign = "left";
+  card.appendChild(chooser);
 
-  const form = buildCreateForm();
-  form.hidden = true;
-  card.appendChild(form);
+  const formSlot = document.createElement("div");
+  card.appendChild(formSlot);
 
-  startBtn.addEventListener("click", () => {
-    startBtn.hidden = true;
-    form.hidden = false;
+  const openForm = (idea) => {
+    chooser.hidden = true;
+    formSlot.innerHTML = "";
+    const form = buildCreateForm(idea, () => {
+      formSlot.innerHTML = "";
+      chooser.hidden = false;
+    });
+    formSlot.appendChild(form);
     form.querySelector("input").focus();
-  });
+  };
+
+  if (openIdeas.length > 0) {
+    const list = document.createElement("div");
+    list.className = "option-list";
+    for (const idea of openIdeas) {
+      list.appendChild(ideaOptionButton(idea, () => openForm(idea)));
+    }
+    chooser.appendChild(list);
+  }
+
+  const startBtn = document.createElement("button");
+  startBtn.className = openIdeas.length > 0 ? "btn btn-block" : "btn btn-primary btn-block";
+  startBtn.textContent = "Start something new";
+  startBtn.addEventListener("click", () => openForm(null));
+  chooser.appendChild(startBtn);
 
   return card;
 }
 
-function buildCreateForm() {
+// An option-style button showing an idea's title and (optionally) its note.
+function ideaOptionButton(idea, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn-option";
+  const t = document.createElement("span");
+  t.className = "opt-title";
+  t.textContent = idea.title;
+  btn.appendChild(t);
+  if (idea.note) {
+    const n = document.createElement("span");
+    n.className = "opt-note";
+    n.textContent = idea.note;
+    btn.appendChild(n);
+  }
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+// Cycle-creation form. With an idea it's the promote flow: prefilled from
+// the idea and submitted via POST /ideas/{id}/promote so the idea gets
+// linked; without one it's a plain POST /cycles.
+function buildCreateForm(idea, onCancel) {
   const form = document.createElement("form");
   form.className = "stack create-form";
 
-  form.appendChild(textField("new-cycle-title", "Title", "text", true));
-  form.appendChild(textAreaField("new-cycle-intent", "Intent — what and why (optional)"));
+  const titleField = textField("new-cycle-title", "Title", "text", true);
+  form.appendChild(titleField);
+  const intentField = textAreaField("new-cycle-intent", "Intent — what and why (optional)");
+  form.appendChild(intentField);
   form.appendChild(textField("new-cycle-weeks", "Target weeks — a first estimate, adjust anytime", "text", false, "1"));
   form.appendChild(textField("new-cycle-show-plan", "How will this be shown? (optional)", "text"));
 
+  if (idea) {
+    titleField.querySelector("input").value = idea.title;
+    if (idea.note) intentField.querySelector("textarea").value = idea.note;
+  }
+
+  const row = document.createElement("div");
+  row.className = "btn-row";
   const submit = document.createElement("button");
   submit.type = "submit";
-  submit.className = "btn btn-primary btn-block";
+  submit.className = "btn btn-primary";
   submit.textContent = "Start cycle";
-  form.appendChild(submit);
+  row.appendChild(submit);
+  if (onCancel) {
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn-ghost";
+    cancel.textContent = "Back";
+    cancel.addEventListener("click", onCancel);
+    row.appendChild(cancel);
+  }
+  form.appendChild(row);
 
   const err = document.createElement("p");
   err.className = "error-text";
@@ -637,16 +737,18 @@ function buildCreateForm() {
     e.preventDefault();
     err.hidden = true;
     const weeksRaw = el("new-cycle-weeks").value.trim();
+    const body = {
+      title: el("new-cycle-title").value.trim(),
+      intent: el("new-cycle-intent").value.trim(),
+      target_weeks: weeksRaw ? parseInt(weeksRaw, 10) : 1,
+      show_plan: el("new-cycle-show-plan").value.trim(),
+    };
     try {
-      await api("/cycles", {
-        method: "POST",
-        body: {
-          title: el("new-cycle-title").value.trim(),
-          intent: el("new-cycle-intent").value.trim(),
-          target_weeks: weeksRaw ? parseInt(weeksRaw, 10) : 1,
-          show_plan: el("new-cycle-show-plan").value.trim(),
-        },
-      });
+      if (idea) {
+        await api(`/ideas/${idea.id}/promote`, { method: "POST", body });
+      } else {
+        await api("/cycles", { method: "POST", body });
+      }
       toast("Cycle started.");
       await renderStatusRoute();
     } catch (e2) {
@@ -817,6 +919,168 @@ function buildHistoryItem(c) {
   return item;
 }
 
+// ---------- quick capture ----------
+
+function renderCaptureRoute() {
+  el("fab").hidden = true;
+  const root = el("shell-content");
+  root.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "stack";
+  wrap.style.gap = "18px";
+
+  const h = document.createElement("h2");
+  h.className = "question-title";
+  h.textContent = "Park an idea";
+  wrap.appendChild(h);
+
+  const hint = document.createElement("p");
+  hint.className = "question-hint";
+  hint.textContent = "Capture it, let it go. Deciding happens at the next cycle boundary.";
+  wrap.appendChild(hint);
+
+  const titleField = textField("capture-title", "Title", "text", true);
+  wrap.appendChild(titleField);
+  const titleInput = titleField.querySelector("input");
+  titleInput.maxLength = 200;
+
+  const noteField = textAreaField("capture-note", "Note (optional, a sentence or two)");
+  const noteInput = noteField.querySelector("textarea");
+  noteInput.maxLength = 280;
+  noteInput.rows = 2;
+  noteInput.style.minHeight = "64px";
+  wrap.appendChild(noteField);
+
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const save = document.createElement("button");
+  save.className = "btn btn-primary";
+  save.textContent = "Save";
+  const cancel = document.createElement("button");
+  cancel.className = "btn btn-ghost";
+  cancel.textContent = "Cancel";
+  row.appendChild(save);
+  row.appendChild(cancel);
+  wrap.appendChild(row);
+
+  const err = document.createElement("p");
+  err.className = "error-text";
+  err.hidden = true;
+  wrap.appendChild(err);
+
+  const submit = async () => {
+    const title = titleInput.value.trim();
+    if (!title) { toast("A title is enough — but it needs one."); return; }
+    save.disabled = true;
+    err.hidden = true;
+    try {
+      await api("/ideas", {
+        method: "POST",
+        body: { title, note: noteInput.value.trim() || null },
+      });
+      toast("Idea parked.");
+      go(capturePrevPath, true);
+    } catch (e2) {
+      err.textContent = e2.message;
+      err.hidden = false;
+      save.disabled = false;
+    }
+  };
+
+  save.addEventListener("click", submit);
+  cancel.addEventListener("click", () => go(capturePrevPath, true));
+  titleInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
+  });
+
+  root.appendChild(wrap);
+  setTimeout(() => titleInput.focus(), 60);
+}
+
+// ---------- idea backlog ----------
+
+async function renderIdeasRoute() {
+  el("fab").hidden = false;
+  const root = el("shell-content");
+  root.innerHTML = "<p class=\"offline-note\">Loading…</p>";
+  try {
+    const ideas = await api("/ideas?status=open") || [];
+    if (currentPath() !== "/ideas") return;
+    root.innerHTML = "";
+
+    if (ideas.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "card empty-state";
+      const h2 = document.createElement("h2");
+      h2.textContent = "Backlog is empty";
+      const p = document.createElement("p");
+      p.textContent = "Ideas you capture with + land here, parked and out of your head.";
+      empty.appendChild(h2);
+      empty.appendChild(p);
+      root.appendChild(empty);
+      return;
+    }
+
+    for (const idea of ideas) {
+      root.appendChild(buildIdeaItem(idea));
+    }
+  } catch (err) {
+    if (err.status === 401) { authed = false; go("/login", true); return; }
+    root.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "error-text";
+    p.textContent = err.message;
+    root.appendChild(p);
+  }
+}
+
+function buildIdeaItem(idea) {
+  const item = document.createElement("div");
+  item.className = "idea-item";
+
+  const body = document.createElement("div");
+  body.className = "idea-body";
+  const h3 = document.createElement("h3");
+  h3.textContent = idea.title;
+  body.appendChild(h3);
+  if (idea.note) {
+    const note = document.createElement("p");
+    note.className = "idea-note";
+    note.textContent = idea.note;
+    body.appendChild(note);
+  }
+  const date = document.createElement("span");
+  date.className = "note-date";
+  date.textContent = (idea.created_at || "").slice(0, 10);
+  body.appendChild(date);
+  item.appendChild(body);
+
+  const discard = document.createElement("button");
+  discard.className = "note-del idea-discard";
+  discard.setAttribute("aria-label", "Discard idea");
+  discard.textContent = "×";
+  discard.addEventListener("click", async () => {
+    try {
+      await api(`/ideas/${idea.id}`, { method: "PATCH", body: { status: "discarded" } });
+      item.remove();
+      toastWithAction("Idea discarded.", "Undo", async () => {
+        try {
+          await api(`/ideas/${idea.id}`, { method: "PATCH", body: { status: "open" } });
+          if (currentPath() === "/ideas") await renderIdeasRoute();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  item.appendChild(discard);
+
+  return item;
+}
+
 // ---------- shared question builders ----------
 
 function buildNotesContext(label, notes) {
@@ -959,11 +1223,19 @@ const reviewFlow = {
     this.answers = {};
     this.path = [];
     this.notes = [];
+    this.openIdeas = [];
     el("review-step-label").textContent = "Weekly review";
     if (this.cycle) {
       try { this.notes = await api(`/cycles/${this.cycle.id}/notes`) || []; } catch (_) { this.notes = []; }
     }
+    try { this.openIdeas = await api("/ideas?status=open") || []; } catch (_) { this.openIdeas = []; }
     this.goStep("how");
+  },
+
+  // The promote offer comes only at a cycle boundary: no cycle at all, or
+  // the one under review is about to end (buried/completed).
+  stepAfterCycleEnds() {
+    return this.openIdeas.length > 0 ? "pick" : "next_step";
   },
 
   // Notes added since the last weekly review (all of them if none yet).
@@ -1000,7 +1272,7 @@ const reviewFlow = {
         this.answers.how_did_it_go,
         (val) => {
           this.answers.how_did_it_go = val;
-          this.goStep(this.cycle ? "alive" : "next_step");
+          this.goStep(this.cycle ? "alive" : this.stepAfterCycleEnds());
         }
       ));
       return;
@@ -1050,15 +1322,19 @@ const reviewFlow = {
           this.answers.newState = val;
           if (val === this.cycle.state) {
             this.goStep("next_step");
-          } else if (val === "buried" && !this.answers.brainDump) {
-            this.goStep("brain_dump_bury");
+          } else if (val === "buried") {
+            if (!this.answers.brainDump) {
+              this.goStep("brain_dump_bury");
+            } else {
+              this.goStep(this.stepAfterCycleEnds());
+            }
           } else if (val === "completed") {
             if (!this.cycle.artifact_url && !this.answers.artifactUrl) {
               this.goStep("artifact_url");
             } else if (!this.cycle.brain_dump && !this.answers.brainDump) {
               this.goStep("brain_dump_bury");
             } else {
-              this.goStep("next_step");
+              this.goStep(this.stepAfterCycleEnds());
             }
           } else {
             this.goStep("next_step");
@@ -1078,10 +1354,48 @@ const reviewFlow = {
           if (!this.cycle.brain_dump && !this.answers.brainDump) {
             this.goStep("brain_dump_bury");
           } else {
-            this.goStep("next_step");
+            this.goStep(this.stepAfterCycleEnds());
           }
         }
       ));
+      return;
+    }
+
+    if (stepId === "pick") {
+      const wrap = document.createElement("div");
+      wrap.className = "stack";
+      wrap.style.gap = "18px";
+
+      const h = document.createElement("h2");
+      h.className = "question-title";
+      h.textContent = "Start one of these?";
+      wrap.appendChild(h);
+
+      const hint = document.createElement("p");
+      hint.className = "question-hint";
+      hint.textContent = "Your parked ideas. Entirely skippable — deciding later is fine.";
+      wrap.appendChild(hint);
+
+      const list = document.createElement("div");
+      list.className = "option-list";
+      for (const idea of this.openIdeas) {
+        list.appendChild(ideaOptionButton(idea, () => {
+          this.answers.pickedIdea = idea;
+          this.goStep("next_step");
+        }));
+      }
+      wrap.appendChild(list);
+
+      const skip = document.createElement("button");
+      skip.className = "btn btn-ghost btn-block";
+      skip.textContent = "Not now";
+      skip.addEventListener("click", () => {
+        this.answers.pickedIdea = null;
+        this.goStep("next_step");
+      });
+      wrap.appendChild(skip);
+
+      root.appendChild(wrap);
       return;
     }
 
@@ -1158,7 +1472,14 @@ const reviewFlow = {
         await api(`/cycles/${this.cycle.id}`, { method: "PATCH", body: patch });
       }
 
-      toast("Weekly review saved.");
+      // Promote the picked idea only after the old cycle is terminal,
+      // otherwise the single-active-cycle rule would reject it.
+      if (this.answers.pickedIdea) {
+        await api(`/ideas/${this.answers.pickedIdea.id}/promote`, { method: "POST" });
+        toast("Weekly review saved — new cycle started.");
+      } else {
+        toast("Weekly review saved.");
+      }
       activeReviewFlow = null;
       go("/");
     } catch (err) {
@@ -1188,10 +1509,20 @@ const quarterlyFlow = {
     el("review-step-label").textContent = "Quarterly review";
     this.answers = {};
     this.path = [];
+    this.oldIdeas = [];
     try {
       this.questions = await api("/questions?status=parked") || [];
     } catch (_) {
       this.questions = [];
+    }
+    // Ideas that have sat in the backlog for 12+ weeks get a one-tap
+    // keep/discard sweep so the backlog can't rot into a guilt pile.
+    try {
+      const open = await api("/ideas?status=open") || [];
+      const cutoff = new Date(Date.now() - 84 * 86400000).toISOString().slice(0, 10);
+      this.oldIdeas = open.filter((i) => (i.created_at || "").slice(0, 10) <= cutoff);
+    } catch (_) {
+      this.oldIdeas = [];
     }
     this.goStep("job");
   },
@@ -1284,6 +1615,74 @@ const quarterlyFlow = {
       root.appendChild(wrap);
       return;
     }
+
+    if (stepId === "sweep") {
+      const wrap = document.createElement("div");
+      wrap.className = "stack";
+      wrap.style.gap = "18px";
+
+      const h = document.createElement("h2");
+      h.className = "question-title";
+      h.textContent = "Old ideas — keep or let go?";
+      wrap.appendChild(h);
+
+      const hint = document.createElement("p");
+      hint.className = "question-hint";
+      hint.textContent = "These have been parked for over 12 weeks. Discarding needs no reason.";
+      wrap.appendChild(hint);
+
+      const list = document.createElement("div");
+      list.className = "option-list";
+      for (const idea of this.oldIdeas) {
+        const row = document.createElement("div");
+        row.className = "sweep-item";
+
+        const body = document.createElement("div");
+        body.className = "idea-body";
+        const t = document.createElement("h3");
+        t.textContent = idea.title;
+        body.appendChild(t);
+        if (idea.note) {
+          const n = document.createElement("p");
+          n.className = "idea-note";
+          n.textContent = idea.note;
+          body.appendChild(n);
+        }
+        row.appendChild(body);
+
+        const actions = document.createElement("div");
+        actions.className = "sweep-actions";
+        const keep = document.createElement("button");
+        keep.className = "btn btn-ghost";
+        keep.textContent = "Keep";
+        keep.addEventListener("click", () => row.remove());
+        const discard = document.createElement("button");
+        discard.className = "btn btn-ghost sweep-discard";
+        discard.textContent = "Discard";
+        discard.addEventListener("click", async () => {
+          try {
+            await api(`/ideas/${idea.id}`, { method: "PATCH", body: { status: "discarded" } });
+            row.remove();
+          } catch (err) {
+            toast(err.message);
+          }
+        });
+        actions.appendChild(keep);
+        actions.appendChild(discard);
+        row.appendChild(actions);
+        list.appendChild(row);
+      }
+      wrap.appendChild(list);
+
+      const done = document.createElement("button");
+      done.className = "btn btn-primary btn-block";
+      done.textContent = "Continue";
+      done.addEventListener("click", () => this.submit());
+      wrap.appendChild(done);
+
+      root.appendChild(wrap);
+      return;
+    }
   },
 
   async patchQuestion(id, body) {
@@ -1293,6 +1692,8 @@ const quarterlyFlow = {
   nextQuestionOrSubmit(idx) {
     if (idx < this.questions.length) {
       this.goStep(`pq:${idx}`);
+    } else if (this.oldIdeas.length > 0 && !this.path.includes("sweep")) {
+      this.goStep("sweep");
     } else {
       this.submit();
     }

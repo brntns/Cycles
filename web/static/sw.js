@@ -2,7 +2,7 @@
 // always go to the network — writes require connectivity, and reads should
 // stay fresh; the app itself falls back to a locally stored last-known
 // /status when the network is unavailable.
-const CACHE_NAME = "cycles-shell-v3";
+const CACHE_NAME = "cycles-shell-v4";
 const SHELL_FILES = [
   "/",
   "/index.html",

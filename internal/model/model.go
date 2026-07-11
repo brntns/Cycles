@@ -50,6 +50,23 @@ type CycleNote struct {
 	Text      string    `json:"text"`
 }
 
+type IdeaStatus string
+
+const (
+	IdeaOpen      IdeaStatus = "open"
+	IdeaPromoted  IdeaStatus = "promoted"
+	IdeaDiscarded IdeaStatus = "discarded"
+)
+
+type Idea struct {
+	ID              string     `json:"id"`
+	Title           string     `json:"title"`
+	Note            *string    `json:"note"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Status          IdeaStatus `json:"status"`
+	PromotedCycleID *string    `json:"promoted_cycle_id"`
+}
+
 type QuestionStatus string
 
 const (
